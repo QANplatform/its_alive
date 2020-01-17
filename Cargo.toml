@@ -1,0 +1,25 @@
+[package]
+name = "poa_demo"
+version = "0.2.2"
+authors = ["Deusz <deusz@centrumcircle.com>"]
+edition = "2018"
+
+[features]
+quantum = ["glp"]
+
+[dependencies]
+rand = "0.7.2"
+serde = "*"
+blake2 = "*"
+rmp-serde = "0.14.0"
+serde_json = "1.0.40"
+serde_derive = "1.0.101"
+pretty_env_logger = "*"
+log = "*"
+natsclient = { git = "https://github.com/encabulators/natsclient" }
+ed25519-dalek = { git = "https://github.com/Silur/ed25519-dalek.git" }
+static_merkle_tree = "1.1.0"
+hex = "*"
+jsonrpc-http-server = "*"
+rocksdb = "0.13.0"
+glp = { path = "./fence" , optional = true}
