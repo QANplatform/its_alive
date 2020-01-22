@@ -1,2 +1,7 @@
 Cargo.lock
 target
+tx.db
+db.db
+accounts.db
+NEMEZIS
+SECURE_THIS.pem

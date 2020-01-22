@@ -14,17 +14,43 @@ use crate::util::{blake2b, vec_to_arr};
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpPk, gen_pk};
 use rocksdb::DB;
+use clap::{App, Arg};
+
 
 #[cfg(feature = "quantum")]
 pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     println!("q_edition");
-    pretty_env_logger::init();
 
-    let uris =  if std::env::args().len() > 1 {
-        vec![std::env::args().nth(1).unwrap().into()]
-    }else{
-        vec!["nats://127.0.0.1:4222".into()]
+    let matches = App::new("POA").args(&[
+        Arg::with_name("rpc-user")
+            .help("http authentication username")
+            .takes_value(true)
+            .short("u")
+            .long("config"),
+        Arg::with_name("rpc-pwd")
+            .help("http authentication password")
+            .takes_value(true)
+            .short("p"),
+        Arg::with_name("nats")
+            .help("nats server uri")
+            .takes_value(true)
+            .short("n")
+    ]).get_matches();
+
+    let auth_token = {
+        let mut token_base = String::from("basic ");
+        if let Some(config) = matches.value_of("rpc-user") {
+            token_base.push_str(config);
+        }
+        token_base.push_str(":");
+        if let Some(config) = matches.value_of("rpc-pwd") {
+            token_base.push_str(config);
+        }
+        base64::encode(&token_base)
     };
+
+    let uris = if let Some(config) = matches.value_of("nats") { vec![config.to_owned()] }
+    else { vec!["nats://127.0.0.1:4222".into()] };
 
     info!("Starting market service...");
     let opts = ClientOptions::builder()
@@ -62,14 +88,14 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     let mut mempool : HashMap<String, Transaction> = HashMap::new();
     let mut mempool = Arc::new(RwLock::new(mempool));
 
-    let mut accounts : HashMap<String, u64> = HashMap::new();
-    let mut accounts = Arc::new(RwLock::new(accounts));
+    let mut accounts = DB::open_default("accounts.db").unwrap();
+    let mut accounts = Arc::new(accounts);
 
     let (sndr, recv) = std::sync::mpsc::sync_channel(777);
 
     start_stdin_handler(sndr.clone());
     
-    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts));
+    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), auth_token);
 
     let mut client = start_client(opts, sndr.clone());
     let config = Config::default();
@@ -130,16 +156,11 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                                 match pool.insert(txh, tx){
                                     Some(_)=>break,
                                     None=>{
-                                        loop{
-                                            match accounts.try_write() {
-                                                Ok(mut accs) => {
-                                                    println!("{}",recipient);
-                                                    *accs.entry(recipient).or_insert(0)+=1;
-                                                    break
-                                                },
-                                                Err(_) => continue,
-                                            }
-                                        };
+                                        match accounts.get(&recipient){
+                                            Ok(Some(value))=>{accounts.put(recipient, (String::from_utf8(value).unwrap().parse::<u64>().unwrap()+1).to_string());},
+                                            Ok(None)=>{accounts.put(recipient,1.to_string());},
+                                            Err(_)=>{()}
+                                        }
                                     }
                                 }
                                 break

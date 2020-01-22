@@ -12,6 +12,8 @@ extern crate rand;
 extern crate rocksdb;
 #[cfg(feature = "quantum")]
 extern crate glp;
+extern crate clap;
+extern crate base64;
 
 pub mod user_client;
 pub mod transaction;
