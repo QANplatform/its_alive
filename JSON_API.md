@@ -1,5 +1,6 @@
 ### Block by height
 This will return the genesis block, automatically generated in this version on start.
+
 ```
 {
     "method": "block_by_height",
@@ -13,6 +14,7 @@ This will return the genesis block, automatically generated in this version on s
 
 ### Block by hash
 The block by this hash does not exist but if it did, it would the block.
+
 ```
 {
     "method": "block_by_hash",
@@ -25,6 +27,8 @@ The block by this hash does not exist but if it did, it would the block.
 
 ### Get transaction
 The transaction by this hash does not exist but if it did, it would the transaction.
+
+```
 {
     "method": "get_transaction",
     "params": 
@@ -32,7 +36,7 @@ The transaction by this hash does not exist but if it did, it would the transact
     "jsonrpc": "2.0",
     "id": 4444
 }
-
+```
 
 ### Get account
 Returns the count of "system transactions".
