@@ -54,8 +54,8 @@ Zero hash receives all transactions created through terminal input.
 
 
 ### Publish Transaction
-Have the node sign a byte vector <data> 
-and publish it through the network to <to> account as recipient.
+Have the node sign a byte vector "data"
+and publish it through the network to "to" account as recipient.
 
 ```
 {
