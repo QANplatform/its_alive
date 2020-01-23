@@ -22,3 +22,76 @@ deliberatly missing from the repository, as it's currently only
 used in private investor demos and setups during the QAN IEO.
 
 Have fun playing with QAN poa-0.0.1 daemon \o/
+
+## Usage
+### DISCLAIMER
+This demo is a proof of concept, it does not represent the final product.
+Thus far only linux distros have been tested.
+The demo is built in a syncronous way.
+Since rocksdb is used it does not allow the code to run multiple times 
+from the same root folder.
+Two alternatives are presented at "Running multiple instances".
+### Dependencies
+To run the demo some dependencies are needed beside the repo itself.
+These dependencies can be read out of the Dockerfile,
+but for convinience sake these are:
+- rust 1.40 or newer
+- clang, llvm and libclang-dev:
+      `apt-get install -y libclang-dev llvm clang`
+      (or equivalent, depending on distro)
+- NATS server (working binary provided in the repo)
+- rocksdb https://github.com/facebook/rocksdb.git 
+
+### Building
+When all dependencies are present the demo can be built by:
+`cargo build`
+or:
+`cargo build --release`
+for a smaller binary.
+Using the "quantum" feature flag is not possible as not all sources are
+presented as of yet. The flagged code pieces are present to provide
+the actual working glue examples. 
+
+### Running
+The first running must be the NATS server as the node uses it. 
+In case the NATS server is not running the demo itself will panic and exit.
+A working NATS server binary is present at (from the repos root folder).
+The steps of running in order are:
+1. `./nats-server-v2.1.2-linux-386/nats-server`
+2. a) `cargo run`
+2. b) `cargo run --release` if compiled with "--release" flag
+(`cargo run` itself will compile the code if modifications are present since
+the last compiled version, or no compiled version is present.)
+2. c) `./target/debug/poa_demo`
+2. d) `./target/release/poa_demo`
+
+You can also use `-u` and `-p` to set http basic auth for the rpc.
+A `-n` argument is also present to define NATS server location.
+(default NATS uri: `nats://127.0.0.1:4222`)
+
+The demo takes data from terminal and uses them to create transactions,
+that the whole network receives.
+
+The demo is also reachable by JSON-RPC on port `8000`.
+Working jsons are presented in a separate `JSON_API.md` file as curl commands.
+
+### Running multiple instances
+RocksDB prevents us from having multiple instances use the same database.
+One possibility to circumvent this is placing the compiled binary
+in multiple folders, thus each instance creating and managing its own database.
+
+The other is using docker.
+The repo itself contains the `Dockerfile` needed, as well as a `compose.sh`.
+
+Using the docker path has the following steps in order:
+1. getting docker
+2. `systemctl start docker`
+3. `docker network create subs` 
+(the `subs` docker network is used in our `compose.sh`)
+4. in the repo root folder running:
+`docker build . -t poademo`
+5. running the NATS server locally, outside of docker (all nodes from
+docker will connect to it)
+6. a) using the `compose.sh` with an integer parameter to define instance count
+or using the following to create a single instance manually
+6. b) `docker run -i --net=subs --name="node" -h "node" -d --ip="172.33.0.2" poademo`

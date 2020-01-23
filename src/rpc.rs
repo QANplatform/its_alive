@@ -63,7 +63,7 @@ pub fn start_rpc(
         let txpub_sender= sendr.clone();
         io.add_method_with_meta("publish_transaction", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : PublishTransaction = _params.parse().expect("56: cant parse publishtransaction");
+            let parsed : PublishTransaction = _params.parse().expect("66: cant parse publishtransaction");
             match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data)){
                 Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
                 Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
@@ -73,7 +73,7 @@ pub fn start_rpc(
         let rawtxpub_sender= sendr.clone();
         io.add_method_with_meta("publish_raw_transaction", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : RawTransaction = _params.parse().expect("64: cant parse rawtransaction");
+            let parsed : RawTransaction = _params.parse().expect("76: cant parse rawtransaction");
             match rawtxpub_sender.clone().send(Event::RawTransaction(parsed.tx)){
                 Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
                 Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
@@ -83,7 +83,7 @@ pub fn start_rpc(
         let byh_blocks_db = blocks_db.clone();
         io.add_method_with_meta("block_by_height", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : IntGetter = _params.parse().expect("72: cant parse intgetter");
+            let parsed : IntGetter = _params.parse().expect("86: cant parse intgetter");
             let bh = match byh_blocks_db.get("block".to_string()+&parsed.height.to_string()) {
                 Ok(Some(value)) => value,
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),
@@ -91,7 +91,7 @@ pub fn start_rpc(
             };
             match byh_blocks_db.get(&bh) {
                 Ok(Some(value)) => {
-                    let value : Block = serde_json::from_slice(&value).expect("80: cant deserialize block");
+                    let value : Block = serde_json::from_slice(&value).expect("94: cant deserialize block");
                     return Ok(json![value])
                 },
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),
@@ -101,7 +101,7 @@ pub fn start_rpc(
 
         io.add_method_with_meta("get_account", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : HashGetter = _params.parse().expect("88: cant parse hashgetter");
+            let parsed : HashGetter = _params.parse().expect("104: cant parse hashgetter");
             let bh = match accounts.get(&parsed.hash) {
                 Ok(Some(value)) => return Ok(json![String::from_utf8(value).unwrap()]),
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),
@@ -111,7 +111,7 @@ pub fn start_rpc(
 
         io.add_method_with_meta("get_transaction", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : HashGetter = _params.parse().expect("105: cant parse hashgetter");
+            let parsed : HashGetter = _params.parse().expect("114: cant parse hashgetter");
             loop{
                 match amempool.try_read(){
                     Ok(amempool)=>{
@@ -134,10 +134,10 @@ pub fn start_rpc(
 
         io.add_method_with_meta("block_by_hash", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed: HashGetter = _params.parse().expect("126: cant parse hashgetter");
+            let parsed: HashGetter = _params.parse().expect("137: cant parse hashgetter");
             match blocks_db.get(&parsed.hash) {
                 Ok(Some(value)) => {
-                    let value : Block = serde_json::from_slice(&value).expect("130: cant deserialize block");
+                    let value : Block = serde_json::from_slice(&value).expect("140: cant deserialize block");
                     return Ok(json![value])
                 },
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),
@@ -157,8 +157,8 @@ pub fn start_rpc(
 
             Meta { auth , token : auth_token.clone() }
         })
-        .start_http(&"127.0.0.1:8000".parse().expect("139: cant parse rpc start addr"))
-        .expect("140: cant start server");
+        .start_http(&"127.0.0.1:8000".parse().expect("160: cant parse rpc start addr"))
+        .expect("161: cant start server");
 
         server.wait();
     });
