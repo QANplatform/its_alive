@@ -97,8 +97,8 @@ impl PetKey {
         pemf.write_all(&self.to_bytes());
     }
 
-    pub fn from_pem() -> Self{
-        let mut pemf = File::open(Path::new(PATHNAME)).unwrap();
+    pub fn from_pem(pathname : &str) -> Self{
+        let mut pemf = File::open(Path::new(pathname)).unwrap();
         let mut buffer = Vec::new();
         pemf.read_to_end(&mut buffer);
         Self::from_bytes(buffer)

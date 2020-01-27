@@ -3,10 +3,12 @@ use crate::{
     block::Block,
 };
 
-#[derive(Debug, Hash)]
 pub enum Event {
     Transaction(Transaction),
-    PublishTx([u8;32], Vec<u8>),
+    #[cfg(not(feature = "quantum"))]
+    PublishTx([u8;32], Vec<u8>,ed25519_dalek::Keypair),
+    #[cfg(feature = "quantum")]
+    PublishTx([u8;32], Vec<u8>,glp::glp::GlpSk),
     RawTransaction(Transaction),
     Block(Block),
     PubKey(Vec<u8>),

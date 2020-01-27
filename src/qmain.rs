@@ -38,7 +38,8 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     ]).get_matches();
 
     let auth_token = {
-        let mut token_base = String::from("basic ");
+        let ret = String::from("Basic ");
+        let mut token_base = String::new();
         if let Some(config) = matches.value_of("rpc-user") {
             token_base.push_str(config);
         }
@@ -46,9 +47,8 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(config) = matches.value_of("rpc-pwd") {
             token_base.push_str(config);
         }
-        base64::encode(&token_base)
+        ret.to_owned()+&base64::encode(&token_base)
     };
-
     let uris = if let Some(config) = matches.value_of("nats") { vec![config.to_owned()] }
     else { vec!["nats://127.0.0.1:4222".into()] };
 
@@ -60,12 +60,12 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         .build().expect("38:clientoptions builder");
 
     let keys = if std::path::Path::new(PATHNAME).exists(){
-        PetKey::from_pem()
+        PetKey::from_pem(PATHNAME)
     }else{
         PetKey::new()
     };
     keys.write_pem();
-
+    // println!("{:?}",hex::encode(keys.glp.to_bytes()));
     crate::nemezis::generate_nemezis_block(&keys.glp);
     let mut nemezis = std::fs::File::open(std::path::Path::new("qNEMEZIS")).unwrap();
     let mut nemezis_buffer = String::new();
@@ -193,9 +193,9 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
             Event::RawTransaction(tx)=>{
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
             },
-            Event::PublishTx(to, data)=>{
+            Event::PublishTx(to, data, glp)=>{
                 //TODO sender validity
-                let tx = Transaction::new(TxBody::new(to, data), &keys.glp);
+                let tx = Transaction::new(TxBody::new(to, data), &glp);
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
             },
             Event::String(s)=>{

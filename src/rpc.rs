@@ -26,8 +26,9 @@ struct RawTransaction {
 }
 #[derive(Deserialize)]
 struct PublishTransaction {
-	to: [u8;32],
-    data:Vec<u8>,
+	to:     [u8;32],
+    data:   Vec<u8>,
+    secret: String,
 }
 
 #[derive(Default, Clone)]
@@ -64,7 +65,17 @@ pub fn start_rpc(
         io.add_method_with_meta("publish_transaction", move |_params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
             let parsed : PublishTransaction = _params.parse().expect("66: cant parse publishtransaction");
-            match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data)){
+            let secret = match parsed.secret.get(0..2).expect("get"){
+                #[cfg(not(feature = "quantum"))]
+                "0x" => ed25519_dalek::Keypair::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).unwrap()).unwrap(),
+                #[cfg(feature = "quantum")]
+                "0x" => glp::glp::GlpSk::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).expect("decode")),
+                #[cfg(not(feature = "quantum"))]
+                _ => crate::pk::PetKey::from_pem(&parsed.secret).ec,
+                #[cfg(feature = "quantum")]
+                _ => crate::pk::PetKey::from_pem(&parsed.secret).glp,
+            };
+            match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data, secret)){
                 Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
                 Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
             }
@@ -159,7 +170,7 @@ pub fn start_rpc(
         })
         .start_http(&"127.0.0.1:8000".parse().expect("160: cant parse rpc start addr"))
         .expect("161: cant start server");
-
+        println!("rpc on : 127.0.0.1:8000");
         server.wait();
     });
 }

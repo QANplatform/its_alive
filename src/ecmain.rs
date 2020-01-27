@@ -63,7 +63,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
         .build().expect("58:clientoptions builder");
 
     let keys = if std::path::Path::new(PATHNAME).exists(){
-        PetKey::from_pem()
+        PetKey::from_pem(PATHNAME)
     }else{
         PetKey::new()
     };
@@ -199,9 +199,9 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                 //check transaction validity
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
             },
-            Event::PublishTx(to, data)=>{
+            Event::PublishTx(to, data, kp)=>{
                 //sender validity
-                let tx = Transaction::new(TxBody::new(to, data), &keys.ec);
+                let tx = Transaction::new(TxBody::new(to, data), &kp);
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
             },
             Event::String(s)=>{
