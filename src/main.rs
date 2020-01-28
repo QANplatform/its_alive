@@ -18,6 +18,7 @@ extern crate base64;
 pub mod user_client;
 pub mod transaction;
 pub mod nemezis;
+pub mod conset;
 pub mod config;
 pub mod block;
 pub mod event;
@@ -29,7 +30,6 @@ pub mod pk;
 pub mod qmain;
 #[cfg(not(feature = "quantum"))]
 pub mod ecmain;
-
 
 #[cfg(feature = "quantum")]
 fn main() -> Result<(), Box<dyn std::error::Error>>{

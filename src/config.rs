@@ -1,43 +1,92 @@
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
-pub struct Config {
-    min_tx      :   usize,
-    min_size    :   usize,
-    min_time    :   u64,
+use std::path::Path;
+use std::fs::File;
+use std::io::{Read, Write};
+use clap::{App, Arg};
+
+#[derive(Serialize,Deserialize)]
+pub struct Config{
+    pub root        : String,
+    pub rpc_port    : u16,
+    pub rpc_user    : String,
+    pub rpc_pass    : String,
+    pub rpc_auth    : String,
+    pub bootstrap   : Vec<String>,
 }
 
-impl Config {
-    pub fn new( min_tx : usize , min_size : usize , min_time : u64 ) -> Self {
-        Config{ min_tx , min_size , min_time }
-    }
-
-    pub fn default() -> Self{
+impl std::default::Default for Config{
+    fn default() -> Self{
         Config{
-            min_tx      :   10,
-            min_size    :   1000,
-            min_time    :   10,
+            root        : "./".into(),
+            rpc_port    : 8000,
+            rpc_user    : "unexpected".into(),
+            rpc_pass    : "pacal".into(),
+            rpc_auth    : "Basic dW5leHBlY3RlZDpwYWNhbA==".into(),
+            bootstrap   : vec!("127.0.0.1:4222".into()),
         }
     }
-
-    pub fn check_limiters(&self, tx_count : usize, pool_size : usize , prev_time : u64 )-> bool {
-        if  (self.min_tx<=tx_count) && 
-            (self.min_size<pool_size) && 
-            (self.min_time<crate::util::timestamp()-prev_time) 
-        { 
-            println!("{:?}", self);
-            return true 
-        }
-        false
+}
+impl Config{
+    pub fn from_string( s : &str ) -> Self {
+        serde_json::from_str(s).expect("couldn't deserialize existing config file")
     }
 
-    pub fn serialize(&self) -> String {
+    pub fn to_string( &self ) -> String {
         serde_json::to_string(&self).unwrap()
     }
+}
 
-    pub fn deserialize( s : &str ) -> Self {
-        serde_json::from_str(s).unwrap()
-    }
+pub fn get_config() -> Config {
+    let mut config = if Path::new("./config.ini").exists(){
+        let mut buf = String::new();
+        File::open("./config.ini").unwrap().read_to_string(&mut buf);
+        Config::from_string(&buf)
+    }else{
+        Config::default()
+    };
+    let matches = App::new("POA").args(&[
+        Arg::with_name("rpc-user")
+            .help("http authentication username")
+            .takes_value(true)
+            .short("u")
+            .long("user"),
+        Arg::with_name("rpc-pwd")
+            .help("http authentication password")
+            .takes_value(true)
+            .short("k"),
+        Arg::with_name("rpc-port")
+            .help("http authentication username")
+            .takes_value(true)
+            .short("p")
+            .long("port"),
+        Arg::with_name("root")
+            .help("nats server uri")
+            .takes_value(true)
+            .short("r")
+            .long("root"),
+        Arg::with_name("nats")
+            .help("nats server uri")
+            .takes_value(true)
+            .short("n")
+            .long("password"),
+    ]).get_matches();
 
-    pub fn deserialize_slice( s :&[u8] ) -> Self {
-        serde_json::from_slice(s).unwrap()
+ 
+    if let Some(u) = matches.value_of("rpc-user") {
+        let mut token_base = String::new();
+        token_base.push_str(u);
+        config.rpc_user = u.into();
+        token_base.push_str(":");
+        if let Some(k) = matches.value_of("rpc-pwd") {
+            token_base.push_str(k);
+            config.rpc_pass = k.into();
+        }
+        config.rpc_auth = ("Basic ".to_owned() + &base64::encode(&token_base));
     }
+    if let Some(n) = matches.value_of("nats") { config.bootstrap = vec![n.to_owned()] }
+    if let Some(r) = matches.value_of("root") { config.root = r.into() }
+    if let Some(p) = matches.value_of("rpc-pwd") { config.rpc_port = p.parse::<u16>().expect("invalid port") }
+    if !Path::new("./config.ini").exists(){
+        File::create("./config.ini").expect("could not create config file").write_fmt(format_args!("{}",config.to_string()));
+    }
+    config
 }

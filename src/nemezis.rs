@@ -2,8 +2,8 @@ use std::io::Write;
 
 #[cfg(not(feature = "quantum"))]
 pub fn generate_nemezis_block(kp: &ed25519_dalek::Keypair){
-    let config = crate::config::Config::default();
-    let nemezis_body = crate::transaction::TxBody::new([0;32], config.serialize().as_bytes().to_vec()); 
+    let ConsensusSettings = crate::conset::ConsensusSettings::default();
+    let nemezis_body = crate::transaction::TxBody::new([0;32], ConsensusSettings.serialize().as_bytes().to_vec()); 
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &kp);
     let mut nemezis_vec = Vec::new();
     nemezis_vec.push(nemesis_tx.hash());
@@ -14,8 +14,8 @@ pub fn generate_nemezis_block(kp: &ed25519_dalek::Keypair){
 
 #[cfg(feature = "quantum")]
 pub fn generate_nemezis_block(kp: &glp::glp::GlpSk){
-    let config = crate::config::Config::default();
-    let nemezis_body = crate::transaction::TxBody::new([0;32], config.serialize().as_bytes().to_vec()); 
+    let ConsensusSettings = crate::conset::ConsensusSettings::default();
+    let nemezis_body = crate::transaction::TxBody::new([0;32], ConsensusSettings.serialize().as_bytes().to_vec()); 
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &kp);
     let mut nemezis_vec = Vec::new();
     nemezis_vec.push(nemesis_tx.hash());

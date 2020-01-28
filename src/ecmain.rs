@@ -13,7 +13,7 @@ use crate::pk::{PetKey, PATHNAME};
 use ed25519_dalek::PublicKey;
 use crate::event::Event;
 use crate::block::{Block, merge};
-use crate::config::Config;
+use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
 use rocksdb::DB;
 use clap::{App, Arg};
@@ -21,43 +21,11 @@ use clap::{App, Arg};
 #[cfg(not(feature = "quantum"))]
 pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     println!("ec_edition");
-    pretty_env_logger::init();
-
-    let matches = App::new("POA").args(&[
-        Arg::with_name("rpc-user")
-            .help("http authentication username")
-            .takes_value(true)
-            .short("u")
-            .long("config"),
-        Arg::with_name("rpc-pwd")
-            .help("http authentication password")
-            .takes_value(true)
-            .short("p"),
-        Arg::with_name("nats")
-            .help("nats server uri")
-            .takes_value(true)
-            .short("n")
-    ]).get_matches();
-
-    let auth_token = {
-        let ret = String::from("Basic ");
-        let mut token_base = String::new();
-        if let Some(config) = matches.value_of("rpc-user") {
-            token_base.push_str(config);
-        }
-        token_base.push_str(":");
-        if let Some(config) = matches.value_of("rpc-pwd") {
-            token_base.push_str(config);
-        }
-        ret.to_owned()+&base64::encode(&token_base)
-    };
-
-    let uris = if let Some(config) = matches.value_of("nats") { vec![config.to_owned()] }
-    else { vec!["nats://127.0.0.1:4222".into()] };
-
+    let config = crate::config::get_config();
+    
     info!("Starting market service...");
     let opts = ClientOptions::builder()
-        .cluster_uris(uris)
+        .cluster_uris(config.bootstrap.clone())
         .connect_timeout(Duration::from_secs(10))
         .reconnect_attempts(255)
         .build().expect("58:clientoptions builder");
@@ -97,10 +65,10 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
 
     start_stdin_handler(sndr.clone());
     
-    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), auth_token);
+    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone());
 
     let mut client = start_client(opts, sndr.clone());
-    let config = Config::default();
+    let ConsensusSettings = ConsensusSettings::default();
     
     let mut pool_size : usize = 0;
     let mut block_height : u64 = 0;
@@ -172,7 +140,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     };
 
                 }
-                if config.check_limiters(mempool.read().expect("175: mempool read failed").len(),pool_size,last_block.timestamp()){
+                if ConsensusSettings.check_limiters(mempool.read().expect("175: mempool read failed").len(),pool_size,last_block.timestamp()){
                     let mut txhashese: Vec<String> = mempool.read().expect("176: mempool read failed").iter().map(|(k, v)| {
                         txdb.put(k.clone(), v.serialize());
                         k.clone()

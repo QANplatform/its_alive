@@ -103,6 +103,7 @@ pub fn start_rpc(
             match byh_blocks_db.get(&bh) {
                 Ok(Some(value)) => {
                     let value : Block = serde_json::from_slice(&value).expect("94: cant deserialize block");
+                    // println!("{}",value);
                     return Ok(json![value])
                 },
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),
