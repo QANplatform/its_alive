@@ -13,6 +13,7 @@ extern crate rocksdb;
 #[cfg(feature = "quantum")]
 extern crate glp;
 extern crate clap;
+extern crate toml;
 extern crate base64;
 
 pub mod user_client;

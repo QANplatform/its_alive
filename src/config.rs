@@ -27,18 +27,18 @@ impl std::default::Default for Config{
 }
 impl Config{
     pub fn from_string( s : &str ) -> Self {
-        serde_json::from_str(s).expect("couldn't deserialize existing config file")
+        toml::from_str(s).expect("couldn't deserialize existing config file")
     }
 
     pub fn to_string( &self ) -> String {
-        serde_json::to_string(&self).unwrap()
+        toml::to_string(&self).unwrap()
     }
 }
 
 pub fn get_config() -> Config {
-    let mut config = if Path::new("./config.ini").exists(){
+    let mut config = if Path::new("./config.toml").exists(){
         let mut buf = String::new();
-        File::open("./config.ini").unwrap().read_to_string(&mut buf);
+        File::open("./config.toml").unwrap().read_to_string(&mut buf);
         Config::from_string(&buf)
     }else{
         Config::default()
@@ -85,8 +85,8 @@ pub fn get_config() -> Config {
     if let Some(n) = matches.value_of("nats") { config.bootstrap = vec![n.to_owned()] }
     if let Some(r) = matches.value_of("root") { config.root = r.into() }
     if let Some(p) = matches.value_of("rpc-pwd") { config.rpc_port = p.parse::<u16>().expect("invalid port") }
-    if !Path::new("./config.ini").exists(){
-        File::create("./config.ini").expect("could not create config file").write_fmt(format_args!("{}",config.to_string()));
+    if !Path::new("./config.toml").exists(){
+        File::create("./config.toml").expect("could not create config file").write_fmt(format_args!("{}",config.to_string()));
     }
     config
 }

@@ -25,3 +25,4 @@ rocksdb = "0.13.0"
 clap = "2.33.0"
 base64 = "0.11.0"
 glp = { path = "./fence" , optional = true}
+toml = "0.5.6"
