@@ -14,8 +14,6 @@ use crate::util::{blake2b, vec_to_arr};
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpPk, gen_pk};
 use rocksdb::DB;
-use clap::{App, Arg};
-
 
 #[cfg(feature = "quantum")]
 pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,8 +68,11 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     let (sndr, recv) = std::sync::mpsc::sync_channel(777);
 
     start_stdin_handler(sndr.clone());
-    
-    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone());
+
+    let vm = Arc::new(RwLock::new(crate::vm::VM::new()));
+    let tvm = vm.clone();
+
+    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
 
     let mut client = start_client(opts, sndr.clone());
     let ConsensusSettings = ConsensusSettings::default();
@@ -192,6 +193,18 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                 let tx = Transaction::new(TxBody::new([0;32], s.as_bytes().to_vec()), &keys.glp);
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
                 println!("{}", s);
+            },
+            Event::VmBuild(file_name, main_send)=>{
+                loop{
+                    match vm.try_write(){
+                        Ok(mut v)=>{
+                            let ret = v.build_from_file("./contracts/".to_owned()+&file_name);
+                            main_send.send(ret).unwrap();
+                            break
+                        }
+                        Err(_)=>{continue}
+                    }
+                }
             }
         }
     }

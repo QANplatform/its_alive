@@ -1,23 +1,23 @@
-//#![feature(proc_macro_hygiene, decl_macro, async_closure)]
-
+extern crate static_merkle_tree;
 extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
+extern crate rmp_serde as rmps;
 #[macro_use]
 extern crate serde_derive;
-extern crate rmp_serde as rmps;
-extern crate static_merkle_tree;
-extern crate hex;
-extern crate rand;
 extern crate rocksdb;
-#[cfg(feature = "quantum")]
-extern crate glp;
+extern crate base64;
+extern crate wasmi;
 extern crate clap;
 extern crate toml;
-extern crate base64;
+extern crate rand;
+#[macro_use]
+extern crate log;
+#[cfg(feature = "quantum")]
+extern crate glp;
+extern crate hex;
 
 pub mod user_client;
 pub mod transaction;
+pub mod watparser;
 pub mod nemezis;
 pub mod conset;
 pub mod config;
@@ -26,6 +26,7 @@ pub mod event;
 pub mod util;
 pub mod rpc;
 pub mod pk;
+pub mod vm;
 
 #[cfg(feature = "quantum")]
 pub mod qmain;

@@ -16,7 +16,6 @@ use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
 use rocksdb::DB;
-use clap::{App, Arg};
 
 #[cfg(not(feature = "quantum"))]
 pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,12 +63,16 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     let (sndr, recv) = std::sync::mpsc::sync_channel(777);
 
     start_stdin_handler(sndr.clone());
+
+    let vm = Arc::new(RwLock::new(crate::vm::VM::new()));
+    let tvm = vm.clone();
     
-    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone());
+    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
 
     let mut client = start_client(opts, sndr.clone());
     let ConsensusSettings = ConsensusSettings::default();
     
+
     let mut pool_size : usize = 0;
     let mut block_height : u64 = 0;
     client.publish("PubKey", &keys.ec.public.to_bytes(), None);
@@ -191,6 +194,18 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                 let tx = Transaction::new(TxBody::new([0;32], s.as_bytes().to_vec()), &keys.ec);
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
                 println!("{}", s);
+            },
+            Event::VmBuild(file_name, main_send)=>{
+                loop{
+                    match vm.try_write(){
+                        Ok(mut v)=>{
+                            let ret = v.build_from_file("./contracts/".to_owned()+&file_name);
+                            main_send.send(ret).unwrap();
+                            break
+                        }
+                        Err(_)=>{continue}
+                    }
+                }
             }
         }
     }

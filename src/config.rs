@@ -80,7 +80,7 @@ pub fn get_config() -> Config {
             token_base.push_str(k);
             config.rpc_pass = k.into();
         }
-        config.rpc_auth = ("Basic ".to_owned() + &base64::encode(&token_base));
+        config.rpc_auth = "Basic ".to_owned() + &base64::encode(&token_base);
     }
     if let Some(n) = matches.value_of("nats") { config.bootstrap = vec![n.to_owned()] }
     if let Some(r) = matches.value_of("root") { config.root = r.into() }

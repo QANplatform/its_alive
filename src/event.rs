@@ -15,4 +15,5 @@ pub enum Event {
     String(String),
     Chat(String),
     Request(String),
+    VmBuild(std::string::String, std::sync::mpsc::SyncSender<String>),
 }
