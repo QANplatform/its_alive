@@ -15,5 +15,6 @@ pub enum Event {
     String(String),
     Chat(String),
     Request(String),
+    GetHeight(std::sync::mpsc::SyncSender<u64>),
     VmBuild(std::string::String, std::sync::mpsc::SyncSender<String>),
 }

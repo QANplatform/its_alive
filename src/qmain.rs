@@ -194,6 +194,9 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
                 println!("{}", s);
             },
+            Event::GetHeight(sendr)=>{
+                sendr.send(block_height).unwrap();
+            },
             Event::VmBuild(file_name, main_send)=>{
                 loop{
                     match vm.try_write(){

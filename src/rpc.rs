@@ -158,10 +158,19 @@ pub fn start_rpc(
             };
         });
 
+        let height_sender = sendr.clone();
+        io.add_method_with_meta("getChainHeight", move | params: Params, meta: Meta|{
+            if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
+            let (main_send, from_main) = std::sync::mpsc::sync_channel(1);
+            height_sender.send(Event::GetHeight(main_send)).unwrap();
+            let ret = from_main.recv().unwrap();
+            return Ok(json![ret])
+        });
+
         let vm_sender = sendr.clone();
         io.add_method_with_meta("fileLoadContract", move | params: Params, meta: Meta|{
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let (main_send, from_main) = std::sync::mpsc::sync_channel(777);
+            let (main_send, from_main) = std::sync::mpsc::sync_channel(1);
             let parsed : Vec<String> = params.parse().expect("56: cant parse publishtransaction");
             vm_sender.send(Event::VmBuild(parsed[0].clone(), main_send)).unwrap();
             let ret = from_main.recv().unwrap();

@@ -52,7 +52,8 @@ pub fn get_config() -> Config {
         Arg::with_name("rpc-pwd")
             .help("http authentication password")
             .takes_value(true)
-            .short("k"),
+            .short("k")
+            .long("password"),
         Arg::with_name("rpc-port")
             .help("http authentication username")
             .takes_value(true)
@@ -67,7 +68,7 @@ pub fn get_config() -> Config {
             .help("nats server uri")
             .takes_value(true)
             .short("n")
-            .long("password"),
+            .long("nats"),
     ]).get_matches();
 
  
