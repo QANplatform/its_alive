@@ -166,6 +166,12 @@ impl Block{
     } 
 }
 
+#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
+pub struct SyncBlock {
+    pub block : Block,
+    pub height: String,
+}
+
 #[test]
 fn merk() {
     use static_merkle_tree;
