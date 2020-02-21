@@ -109,7 +109,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                      _ => panic!()
                 };
                 // println!("{:?}", block_vec);
-                let block : Block = Block::block_from_vec(&block_vec);
+                let block : Block = serde_json::from_str(&String::from_utf8_lossy(&block_vec)).expect("112");
                 if !block.validate() && block.hashedblock.blockdata.prev_hash == last_hash{
                     panic!("block invalid in chain");
                 }
@@ -131,8 +131,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                blockdb.put("block".to_owned()+&block_height.to_string(), block.hash()).expect("115");
-                blockdb.put(&block_hash, block.block_to_blob()).expect("115")
+                blockdb.put("block".to_owned()+&block_height.to_string(), block.hash()).expect("134");
+                blockdb.put(&block_hash, serde_json::to_string(&block).expect("135")).expect("135 2")
             }
         }
         block_height+=1;
@@ -256,7 +256,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     block_height +=1;
                     blockdb.put("height", block_height.to_string());
                     println!("height {}", block_height);
-                    blockdb.put(&last_hash, last_block.block_to_blob());
+                    blockdb.put(&last_hash, serde_json::to_string(&last_block).expect("259"));
                     blockdb.put("block".to_owned()+&block_height.to_string(), &last_hash);
                     client.publish("block.propose", &last_block.block_to_blob(), None);
                 }
@@ -317,13 +317,16 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     SyncType::AtHeight(h) => {
                         //block hash at h height
                         println!("AtHeight {}", "block".to_string()+&h.to_string());
-                        SyncType::BlockHash(String::from_utf8_lossy(&blockdb.get("block".to_string()+&h.to_string()).expect("271").expect("271 2")).to_string())
+                        SyncType::BlockHash(String::from_utf8_lossy(match &blockdb.get("block".to_string()+&h.to_string()).expect("271"){
+                            Some(h)=>h,
+                            None=>continue
+                        }).to_string())
                     },
                     SyncType::TransactionAtHash(hash) => {
                         //get transaction at hash
                         println!("i got asked for TransactionAtHash {}",&hash);
                         let tx = match mempool.read().expect("316").get(&hash){
-                            Some(t) => serde_json::to_vec(t).expect("300"),
+                            Some(t) => serde_json::to_vec(&t).expect("300"),
                             None => txdb.get(hash).expect("301").expect("301 2")
                         };
                         SyncType::Transaction(tx)
@@ -331,7 +334,9 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     SyncType::BlockAtHash(hash) => {
                         //get block at hash      
                         // println!("BlockAtHash {}",hash);      
-                        SyncType::Block(blockdb.get(hash).expect("279").expect("279 2"))
+                        SyncType::Block(match blockdb.get(hash).expect("279"){
+                            Some(b)=>b, None=>continue
+                        })
                     },
                     _ => {continue}
                 };
@@ -341,32 +346,3 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 }
-
-
-
-// Event::Request(r)=>{
-            //     match r.as_ref() {
-            //         "pubkey" => { client.publish("PubKey", &keys.ec.public.to_bytes(), None); },
-            //         _ => {},
-            //     }
-            // },
-            // Event::RequestBlocks(r)=>{
-            //     let from_to : FromTo = serde_json::from_slice(&r).expect("");
-            // },
-            
-
-
-
-    // let cc = client.clone();
-    // client.subscribe("test", move |msg| {
-        // println!("{:?}", msg);
-        // match &msg.reply_to{
-            // Some(r)=>{
-                // cc.publish(&r, "ret".as_bytes(), None);
-            // }None=>{}
-        // }
-        // Ok(())
-    // }).expect("test");
-    // client.publish("test", &[0u8;8], Some("Nani"));
-    // client.publish("test", &[0u8;8], None);
-    // println!("{:?}",client.request("test", &[0u8;8], Duration::new(100,0)));
