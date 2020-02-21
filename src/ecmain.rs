@@ -1,4 +1,4 @@
-use crate::user_client::{start_client, start_stdin_handler};
+use crate::user_client::{start_client, start_sync_sub, start_stdin_handler};
 use crate::transaction::{Transaction, TxBody};
 use natsclient::{self, ClientOptions};
 use std::{
@@ -68,11 +68,15 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     let tvm = vm.clone();
     let ConsensusSettings = ConsensusSettings::default();
     let mut pool_size : usize = 0;
-    let mut block_height : u64 = 0;
+    let mut block_height : u64 = match blockdb.get("height"){
+        Ok(Some(h))=>String::from_utf8_lossy(&h).parse::<u64>().expect("72 2"),
+        Ok(None)=>{blockdb.put("height",0.to_string()); 0},
+        Err(e)=>panic!(e)
+    };
     
 
     crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
-    let mut client = start_client(opts, sndr.clone(), hex::encode(keys.ec.public));
+    let mut client = start_client(opts, sndr.clone(), /*hex::encode(keys.ec.public)*/);
     client.publish("PubKey", &keys.ec.public.to_bytes(), None);
     // std::thread::sleep(Duration::new(10,0));
 
@@ -81,6 +85,14 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             match serde_json::from_slice(&h.payload).expect("81"){SyncType::Height(h)=>h, _ => 0}
         }Err(_) => 0
     };
+    println!("{}",block_height);
+    for i in 0..block_height{
+        println!("{}","block".to_owned()+&i.to_string());
+        match blockdb.get("block".to_owned()+&i.to_string()).expect("135") {
+            Some(h) => println!("{}",String::from_utf8_lossy(&h)),
+            None => {block_height = i-1; break},
+        }
+    }
     'blockloop:while block_height < height{
         let req_block_hash = client.request("Synchronize", 
             &serde_json::to_vec(&SyncType::AtHeight(block_height+1)).expect("86") ,std::time::Duration::new(8,0)).expect("86 2").payload;
@@ -96,8 +108,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     SyncType::Block(h)=>h,
                      _ => panic!()
                 };
-                println!("{:?}", block_vec);
-                let block : Block= serde_json::from_slice(&block_vec).unwrap();
+                // println!("{:?}", block_vec);
+                let block : Block = Block::block_from_vec(&block_vec);
                 if !block.validate() && block.hashedblock.blockdata.prev_hash == last_hash{
                     panic!("block invalid in chain");
                 }
@@ -119,19 +131,23 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                blockdb.put("block".to_owned()+&block_height.to_string(), block.block_to_blob()).expect("115");
+                blockdb.put("block".to_owned()+&block_height.to_string(), block.hash()).expect("115");
                 blockdb.put(&block_hash, block.block_to_blob()).expect("115")
             }
         }
         block_height+=1;
+        blockdb.put("height", block_height.to_string());
         last_hash = block_hash;
     }
+
+    start_sync_sub(sndr.clone(), &client);
+
     println!("loop");
     'main:loop{
         let ev = recv.recv().expect("123: receiver failed");
         match ev {
             Event::Block(b)=>{
-                println!("my_head: {} \nincoming_head: {}",last_hash, b.hash());
+                println!("my_head: {} \nincoming_head: {}", &last_hash, b.hash());
                 match blockdb.get(&b.hash()) {
                     Err(_)      =>{panic!("db failure")}
                     Ok(Some(b)) =>{continue'main}
@@ -151,12 +167,17 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                                     let hexed = hex::encode(k);
                                     match pool.remove(&hexed){
                                         Some(x)=>{
-                                            txdb.put(k, x.serialize()).unwrap();
+                                            txdb.put(k, x.serialize()).expect("162");
                                         },
                                         None=>{
+                                            println!("i ask for : {}", hexed);
                                             let req_tx = client.request("Synchronize", 
-                                                &serde_json::to_vec(&SyncType::TransactionAtHash(hexed.clone())).expect("157") ,std::time::Duration::new(8,0)).expect("157 2").payload;
-                                            let tx : Transaction = match serde_json::from_slice(&req_tx).expect("158"){SyncType::Transaction(h)=>Transaction::deserialize_slice(&h), _ => panic!()};
+                                                &serde_json::to_vec(&SyncType::TransactionAtHash(hexed.clone()))
+                                                    .expect("157") ,std::time::Duration::new(8,0))
+                                                    .expect("157 2")
+                                                .payload;
+                                            let tx : Transaction = match serde_json::from_slice(&req_tx).expect("158"){
+                                                SyncType::Transaction(h)=>Transaction::deserialize_slice(&h), _ => panic!()};
                                             if tx.validate(){
                                                 txdb.put(&hexed, tx.serialize()).expect("160");
                                             }else{
@@ -171,9 +192,10 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
                     block_height+=1;
+                    blockdb.put("height", block_height.to_string());
+                    println!("height {}", block_height);
                     last_hash = b.hash();
                     last_block = b.clone();
-
                     let lhs = &last_hash;
                     println!("blockhash: {}", lhs);
 
@@ -232,7 +254,10 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     last_block = Block::new(last_hash.clone(), txhashes, &keys.ec);
                     last_hash = last_block.hash();
                     block_height +=1;
+                    blockdb.put("height", block_height.to_string());
+                    println!("height {}", block_height);
                     blockdb.put(&last_hash, last_block.block_to_blob());
+                    blockdb.put("block".to_owned()+&block_height.to_string(), &last_hash);
                     client.publish("block.propose", &last_block.block_to_blob(), None);
                 }
             },
@@ -291,13 +316,13 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     SyncType::AtHeight(h) => {
                         //block hash at h height
-                        // println!("AtHeight {}",h);
+                        println!("AtHeight {}", "block".to_string()+&h.to_string());
                         SyncType::BlockHash(String::from_utf8_lossy(&blockdb.get("block".to_string()+&h.to_string()).expect("271").expect("271 2")).to_string())
                     },
                     SyncType::TransactionAtHash(hash) => {
                         //get transaction at hash
-                        // println!("TransactionAtHash {}",&hash);
-                        let tx = match mempool.read().unwrap().get(&hash){
+                        println!("i got asked for TransactionAtHash {}",&hash);
+                        let tx = match mempool.read().expect("316").get(&hash){
                             Some(t) => serde_json::to_vec(t).expect("300"),
                             None => txdb.get(hash).expect("301").expect("301 2")
                         };
@@ -310,7 +335,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     _ => {continue}
                 };
-                println!("dat: {:?}", dat);
+                // println!("dat: {:?}", dat);
                 client.publish(&r, &serde_json::to_vec(&dat).expect("283"), None);
             },
         }

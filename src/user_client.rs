@@ -9,7 +9,7 @@ use crate::{
     transaction::Transaction
 };
 
-pub fn start_client(opts: ClientOptions, sndr : std::sync::mpsc::SyncSender<Event>, self_pk : String) -> Client{
+pub fn start_client(opts: ClientOptions, sndr : std::sync::mpsc::SyncSender<Event>) -> Client{
     let mut client = Client::from_options(opts).expect("13:client from options builder");
     client.connect().expect("41:client  connect");
 
@@ -36,23 +36,22 @@ pub fn start_client(opts: ClientOptions, sndr : std::sync::mpsc::SyncSender<Even
         Ok(())
     }).expect("chat");
 
-
     let pksndr = sndr.clone();
     client.subscribe("PubKey", move |msg| {
         pksndr.send(Event::PubKey(msg.payload.clone()));
         Ok(())
     }).expect("PubKey");
+    client
+}
 
+pub fn start_sync_sub(sndr : std::sync::mpsc::SyncSender<Event>, client : &Client){
     let syncsndr = sndr.clone();
     client.subscribe("Synchronize", move |msg| {
         let rep = msg.reply_to.clone().unwrap();
         syncsndr.send(Event::Synchronize(msg.payload.clone(), rep));
         Ok(())
     }).expect("Synchronize");
-
-    client
 }
-
 
 pub fn start_stdin_handler(tsndr : std::sync::mpsc::SyncSender<Event>){ 
     thread::spawn( move ||{
