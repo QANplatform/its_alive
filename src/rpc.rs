@@ -55,7 +55,6 @@ pub fn start_rpc(
     sendr           : std::sync::mpsc::SyncSender<Event>, 
     blocks_db       : Arc<DB>, 
     tx_db           : Arc<DB>, 
-    amempool        : Arc<RwLock<HashMap<String, crate::transaction::Transaction>>>,
     accounts        : Arc<DB>,
     auth_token      : String,
     tvm             : Arc<RwLock<crate::vm::VM>>
@@ -122,27 +121,14 @@ pub fn start_rpc(
             };
         });
 
+        let gettx_sender = sendr.clone();
         io.add_method_with_meta("get_transaction", move |params: Params, meta: Meta| {
             if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
             let parsed : HashGetter = params.parse().expect("114: cant parse hashgetter");
-            loop{
-                match amempool.try_read(){
-                    Ok(amempool)=>{
-                        match amempool.get(&parsed.hash).clone(){
-                            Some(x) => {
-                                return Ok(json![&x])
-                            },
-                            None => {
-                                match tx_db.get(&parsed.hash) {
-                                    Ok(Some(value)) => return Ok(json![crate::transaction::Transaction::deserialize_slice(&value)]),
-                                    Ok(None) => return Err(jsonrpc_core::Error::internal_error()),
-                                    Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
-                                }
-                            }
-                        }
-                    },Err(_)=>continue
-                }
-            };
+            let (main_send, from_main) = std::sync::mpsc::sync_channel(1);
+            gettx_sender.send(Event::GetTx(parsed.hash, main_send)).unwrap();
+            let ret = from_main.recv().unwrap();
+            return Ok(json![&ret]);
         });
 
         io.add_method_with_meta("block_by_hash", move | params: Params, meta: Meta| {

@@ -19,6 +19,7 @@ pub enum Event {
     Synchronize(Vec<u8>, String),
     GetHeight(std::sync::mpsc::SyncSender<u64>),
     VmBuild(std::string::String, std::sync::mpsc::SyncSender<String>),
+    GetTx(String, std::sync::mpsc::SyncSender<Transaction>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

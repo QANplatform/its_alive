@@ -83,7 +83,7 @@ impl Transaction{
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn validate(&self) -> bool{
+    pub fn verify(&self) -> bool{
         let pk = PublicKey::from_bytes(&self.pubkey).unwrap();
         let sig = Signature::from_bytes(&self.sig).unwrap();
         match pk.verify(self.transaction.serialize().as_bytes(), &sig){
@@ -99,12 +99,10 @@ impl Transaction{
     }
 
     #[cfg(feature = "quantum")]
-    pub fn validate(&self) -> bool{
+    pub fn verify(&self) -> bool{
         let pk = GlpPk::from_bytes(&self.pubkey);
         let qsig = GlpSig::from_bytes(&self.sig);
         verify(&pk,qsig,self.transaction.serialize().as_bytes().to_vec())
-        // let ecsig = self.transaction.ec_sig;
-        
     }
 
 

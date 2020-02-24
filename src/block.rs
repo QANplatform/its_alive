@@ -97,6 +97,7 @@ pub struct Block {
     pub hashedblock : HashedBlock,
     pub proposer_pub: Vec<u8>,
     pub sig         : Vec<u8>,
+    pub height      : u64,
 }
 
 impl fmt::Display for Block {
@@ -109,37 +110,39 @@ impl fmt::Display for Block {
 
 impl Block{
     #[cfg(not(feature = "quantum"))]
-    pub fn new(prev_hash: String, txes: Vec<[u8;32]>, kp: &Keypair) -> Block {
+    pub fn new(prev_hash: String, txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
         let sig = kp.sign(&hashedblock.block_to_blob()).to_bytes().to_vec();
         let proposer_pub = kp.public.to_bytes().to_vec();
         Block{
             proposer_pub,
             hashedblock, 
+            height,
             sig
         }
     }
 
     #[cfg(feature = "quantum")]
-    pub fn new(prev_hash: String, txes: Vec<[u8;32]>, sk: &GlpSk) -> Block {
+    pub fn new(prev_hash: String, txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
         let sig = sign(&sk, hashedblock.block_to_blob()).unwrap().to_bytes();
         let proposer_pub = gen_pk(&sk).to_bytes().to_vec();
         Block{
             proposer_pub,
             hashedblock, 
+            height,
             sig
         }
     }
 
     #[cfg(feature = "quantum")]
-    pub fn validate(&self) -> bool {
+    pub fn verify(&self) -> bool {
         let pk = GlpPk::from_bytes(&self.proposer_pub);
         verify(&pk, GlpSig::from_bytes(&self.sig), self.hashedblock.block_to_blob()) 
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn validate(&self) -> bool{
+    pub fn verify(&self) -> bool{
         let pk = PublicKey::from_bytes(&self.proposer_pub).unwrap();
         let sig = Signature::from_bytes(&self.sig).unwrap();
         match pk.verify(&self.hashedblock.block_to_blob(), &sig){
@@ -147,6 +150,11 @@ impl Block{
             Err(_)=>false
         }
     }
+
+    pub fn validate(&self, timestamp: u64, height: u64, prev_hash: &str) -> (bool, bool, bool){
+        ( timestamp > self.timestamp(), height > self.height, prev_hash == self.hashedblock.blockdata.prev_hash )
+    }
+
     pub fn hash(&self)->String{
         self.hashedblock.hash.clone()
     }

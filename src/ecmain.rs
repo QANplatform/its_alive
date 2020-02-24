@@ -56,7 +56,6 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
 
     let txdb = Arc::new(txdb);
     let blockdb = Arc::new(blockdb);
-    let mut mempool = Arc::new(RwLock::new(mempool));
     let mut accounts = Arc::new(accounts);
     
 
@@ -75,7 +74,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     };
     
 
-    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
+    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
     let mut client = start_client(opts, sndr.clone(), /*hex::encode(keys.ec.public)*/);
     client.publish("PubKey", &keys.ec.public.to_bytes(), None);
     // std::thread::sleep(Duration::new(10,0));
@@ -93,11 +92,14 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             None => {block_height = i-1; break},
         }
     }
+    
+    println!("start sync: {}", crate::util::timestamp());
     'blockloop:while block_height < height{
+        println!("{}",block_height+1);
         let req_block_hash = client.request("Synchronize", 
-            &serde_json::to_vec(&SyncType::AtHeight(block_height+1)).expect("86") ,std::time::Duration::new(8,0)).expect("86 2").payload;
+            &serde_json::to_vec(&SyncType::AtHeight(block_height)).expect("86") ,std::time::Duration::new(8,0)).expect(&format!("blockheight: {}", block_height.to_string())).payload;
         let block_hash : String = match serde_json::from_slice(&req_block_hash).expect("") {SyncType::BlockHash(h)=>h, _ => panic!()};
-        println!("sync block: {}", block_hash);
+        // println!("sync block: {}", block_hash);
         match blockdb.get(&block_hash) {
             Err(_)      =>{panic!("db failure")}
             Ok(Some(b)) =>{}
@@ -110,12 +112,13 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 // println!("{:?}", block_vec);
                 let block : Block = serde_json::from_str(&String::from_utf8_lossy(&block_vec)).expect("112");
-                if !block.validate() && block.hashedblock.blockdata.prev_hash == last_hash{
-                    panic!("block invalid in chain");
+                if !block.verify() && !(block.validate(last_block.timestamp(),block_height,&last_hash) == (true,true,true)){
+                    println!("block invalid in chain");
+                    continue'blockloop
                 }
                 'txloop:for txh in &block.hashedblock.blockdata.txes{
                     let txh = hex::encode(txh);
-                    println!("sync tx: {}", txh);
+                    // println!("sync tx: {}", txh);
                     match txdb.get(&txh) {
                         Err(_)      =>{panic!("db failure")}
                         Ok(Some(b)) =>{}
@@ -123,7 +126,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                             let req_tx = client.request("Synchronize", 
                                 &serde_json::to_vec(&SyncType::TransactionAtHash(txh.clone())).expect("105") ,std::time::Duration::new(8,0)).expect("105 2").payload;
                             let tx : Transaction = match serde_json::from_slice(&req_tx).expect("106 2"){SyncType::Transaction(h)=>Transaction::deserialize_slice(&h), _ => panic!()};
-                            if tx.validate(){
+                            if tx.verify(){
                                 txdb.put(&txh, tx.serialize()).expect("108");
                             }else{
                                 panic!("tx invalid in chain");
@@ -138,7 +141,17 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
         block_height+=1;
         blockdb.put("height", block_height.to_string());
         last_hash = block_hash;
+        txdb.flush();
+        blockdb.flush();
     }
+
+    let mut block_height : u64 = match blockdb.get("height"){
+        Ok(Some(h))=>String::from_utf8_lossy(&h).parse::<u64>().expect("72 2"),
+        Ok(None)=>{blockdb.put("height",0.to_string()); 0},
+        Err(e)=>panic!(e)
+    };
+    println!("end sync: {}", crate::util::timestamp());
+    println!("{}",block_height);
 
     start_sync_sub(sndr.clone(), &client);
 
@@ -153,44 +166,46 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(Some(b)) =>{continue'main}
                     Ok(None)    =>{}
                 }
-                if b.validate() {
+                if !b.verify() { continue'main }
+                if b.hash() == last_hash {
+                    if b.sig[0] < last_block.sig[0]{
+                        blockdb.put("block".to_owned()+&block_height.to_string(), serde_json::to_string(&last_block).unwrap());
+                        last_hash = b.hash();
+                        last_block = b;
+                        blockdb.flush();
+                        continue'main
+                    }
+                }
+                if b.validate(last_block.timestamp(),block_height,&last_hash) == (true,true,true){
                     for k in b.hashedblock.blockdata.txes.iter() {
-                        if !mempool.read().expect("128: mempool read failed").contains_key(&hex::encode(k)){ continue }
+                        if !mempool.contains_key(&hex::encode(k)){ continue'main }
                     }
                     let tree = static_merkle_tree::Tree::from_hashes(b.hashedblock.blockdata.txes.clone(),merge);
                     let merkle_root : Vec<u8> = tree.get_root_hash().expect("131: merkle root failed").to_vec();
-                    if merkle_root!=b.hashedblock.blockdata.merkle_root {continue}
-                    loop{
-                        match mempool.try_write() {
-                            Ok(mut pool) => {
-                                for k in b.hashedblock.blockdata.txes.iter(){
-                                    let hexed = hex::encode(k);
-                                    match pool.remove(&hexed){
-                                        Some(x)=>{
-                                            txdb.put(k, x.serialize()).expect("162");
-                                        },
-                                        None=>{
-                                            println!("i ask for : {}", hexed);
-                                            let req_tx = client.request("Synchronize", 
-                                                &serde_json::to_vec(&SyncType::TransactionAtHash(hexed.clone()))
-                                                    .expect("157") ,std::time::Duration::new(8,0))
-                                                    .expect("157 2")
-                                                .payload;
-                                            let tx : Transaction = match serde_json::from_slice(&req_tx).expect("158"){
-                                                SyncType::Transaction(h)=>Transaction::deserialize_slice(&h), _ => panic!()};
-                                            if tx.validate(){
-                                                txdb.put(&hexed, tx.serialize()).expect("160");
-                                            }else{
-                                                panic!("tx invalid in chain");
-                                            }
-                                        }
-                                    }
-                                }
-                                break
+                    if merkle_root!=b.hashedblock.blockdata.merkle_root { continue'main }
+                    for k in b.hashedblock.blockdata.txes.iter(){
+                        let hexed = hex::encode(k);
+                        match mempool.remove(&hexed){
+                            Some(x)=>{
+                                txdb.put(k, x.serialize()).expect("162");
                             },
-                            Err(_) => continue,
+                            None=>{
+                                println!("i ask for : {}", hexed);
+                                let req_tx = client.request("Synchronize", 
+                                    &serde_json::to_vec(&SyncType::TransactionAtHash(hexed.clone()))
+                                        .expect("157") ,std::time::Duration::new(8,0))
+                                        .expect("157 2")
+                                    .payload;
+                                let tx : Transaction = match serde_json::from_slice(&req_tx).expect("158"){
+                                    SyncType::Transaction(h)=>Transaction::deserialize_slice(&h), _ => panic!()};
+                                if tx.verify(){
+                                    txdb.put(&hexed, tx.serialize()).expect("160");
+                                }else{
+                                    panic!("tx invalid in chain");
+                                }
+                            }
                         }
-                    };
+                    }
                     block_height+=1;
                     blockdb.put("height", block_height.to_string());
                     println!("height {}", block_height);
@@ -207,53 +222,37 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             },
             Event::Transaction(tx)=>{
                 //handle incoming transaction
-                if tx.validate(){
+                if tx.verify(){
                     pool_size += tx.len();
                     let txh = hex::encode(tx.hash());
                     let recipient = hex::encode(&tx.transaction.recipient);
-                    loop{
-                        match mempool.try_write() {
-                            Ok(mut pool) => {
-                                match pool.insert(txh.clone(), tx){
-                                    Some(_)=>println!("already have: {}", &txh),
-                                    None=>{
-                                        println!("inserted: {}", &txh);
-                                        match accounts.get(&recipient){
-                                            Ok(Some(value))=>{accounts.put(recipient, (String::from_utf8(value).expect("176").parse::<u64>().expect("176 2")+1).to_string());},
-                                            Ok(None)=>{accounts.put(recipient,1.to_string());},
-                                            Err(_)=>{()}
-                                        }
-                                    }
-                                }
-                                break
-                            },
-                            Err(_) => continue,
+                    match mempool.insert(txh.clone(), tx){
+                        Some(_)=>println!("already have: {}", &txh),
+                        None=>{
+                            println!("inserted: {}", &txh);
+                            match accounts.get(&recipient){
+                                Ok(Some(value))=>{accounts.put(recipient, (String::from_utf8(value).expect("176").parse::<u64>().expect("176 2")+1).to_string());},
+                                Ok(None)=>{accounts.put(recipient,1.to_string());},
+                                Err(_)=>{()}
+                            }
                         }
-                    };
-
+                    }     
                 }
-                if ConsensusSettings.check_limiters(mempool.read().expect("189: mempool read failed").len(),pool_size,last_block.timestamp()){
-                    let mut txhashese: Vec<String> = mempool.read().expect("190: mempool read failed").iter().map(|(k, v)| {
+                if ConsensusSettings.check_limiters(mempool.len(),pool_size,last_block.timestamp()){
+                    let mut txhashese: Vec<String> = mempool.iter().map(|(k, v)| {
                         txdb.put(k.clone(), v.serialize());
                         k.clone()
                     } ).collect();
-                    loop{
-                        match mempool.try_write() {
-                            Ok(mut pool) => {
-                                pool.clear();
-                                break
-                            },
-                            Err(_) => continue,
-                        }
-                    };
+                    
+                    mempool.clear();
                     txhashese.sort();
                     let txhashes: Vec<[u8;32]> = txhashese.iter().map(|k| {
                         println!("{}",k);
                         vec_to_arr(&hex::decode(k.clone()).expect("206: hex decode failed"))
                     } ).collect();
-                    last_block = Block::new(last_hash.clone(), txhashes, &keys.ec);
-                    last_hash = last_block.hash();
                     block_height +=1;
+                    last_block = Block::new(last_hash.clone(), txhashes, &keys.ec, block_height);
+                    last_hash = last_block.hash();
                     blockdb.put("height", block_height.to_string());
                     println!("height {}", block_height);
                     blockdb.put(&last_hash, serde_json::to_string(&last_block).expect("259"));
@@ -277,6 +276,10 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             Event::GetHeight(sendr)=>{
                 sendr.send(block_height).expect("226");
             },
+            Event::GetTx(hash, sendr)=>{
+                let tx = mempool.get(&hash).unwrap();
+                sendr.send(tx.clone());
+            }
             Event::Chat(s)=>{
                 //incoming chat
                 let tx = Transaction::new(TxBody::new([0;32], s.as_bytes().to_vec()), &keys.ec);
@@ -303,7 +306,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                             main_send.send(ret).expect("256");
                             break
                         }
-                        Err(_)=>{continue}
+                        Err(_)=>{ continue }
                     }
                 }
             },
@@ -316,33 +319,35 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     SyncType::AtHeight(h) => {
                         //block hash at h height
-                        println!("AtHeight {}", "block".to_string()+&h.to_string());
                         SyncType::BlockHash(String::from_utf8_lossy(match &blockdb.get("block".to_string()+&h.to_string()).expect("271"){
                             Some(h)=>h,
-                            None=>continue
+                            None=> continue'main
                         }).to_string())
                     },
                     SyncType::TransactionAtHash(hash) => {
                         //get transaction at hash
-                        println!("i got asked for TransactionAtHash {}",&hash);
-                        let tx = match mempool.read().expect("316").get(&hash){
+                        let tx = match mempool.get(&hash){
                             Some(t) => serde_json::to_vec(&t).expect("300"),
-                            None => txdb.get(hash).expect("301").expect("301 2")
+                            None => match txdb.get(hash).expect("301"){
+                                Some(x)=> x,
+                                None => continue'main
+                            }
                         };
                         SyncType::Transaction(tx)
                     },
                     SyncType::BlockAtHash(hash) => {
-                        //get block at hash      
-                        // println!("BlockAtHash {}",hash);      
+                        //get block at hash         
                         SyncType::Block(match blockdb.get(hash).expect("279"){
-                            Some(b)=>b, None=>continue
+                            Some(b) => b, None => continue'main
                         })
                     },
-                    _ => {continue}
+                    _ => { continue'main }
                 };
                 // println!("dat: {:?}", dat);
                 client.publish(&r, &serde_json::to_vec(&dat).expect("283"), None);
             },
         }
+        txdb.flush();
+        blockdb.flush();
     }
 }
