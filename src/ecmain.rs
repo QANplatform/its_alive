@@ -126,9 +126,9 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             let block_hash : String = match serde_json::from_slice(&req_block_hash)
                 .expect("cannot deserialize blockhash response") {SyncType::BlockHash(h)=>h, _ => panic!()};
             // println!("sync block: {}", block_hash);
-            match blockdb.get(&block_hash) {
+            match blockdb.get_pinned(&block_hash) {
                 Err(_)      =>{ panic!("db failure") }
-                Ok(Some(b)) =>{ println!("During Sync I found a block I already have: {}", block_hash);}
+                Ok(Some(_)) =>{ println!("During Sync I found a block I already have: {}", block_hash);}
                 Ok(None)    =>{
                     let req_block = client.request("Synchronize", 
                         &serde_json::to_vec(&SyncType::BlockAtHash(block_hash.clone())).expect("couldn't serialize request for block at hash") ,std::time::Duration::new(8,0))
@@ -147,9 +147,9 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     'txloop:for txh in &block.hashedblock.blockdata.txes{
                         let txh = hex::encode(txh);
                         // println!("sync tx: {}", txh);
-                        match txdb.get(&txh) {
+                        match txdb.get_pinned(&txh) {
                             Err(_)      =>{panic!("db failure")}
-                            Ok(Some(b)) =>{ continue }
+                            Ok(Some(_)) =>{ continue }
                             Ok(None)    =>{
                                 let req_tx = client.request("Synchronize", 
                                     &serde_json::to_vec(&SyncType::TransactionAtHash(txh.clone())).expect("couldn't serialize transaction request") ,std::time::Duration::new(8,0))
@@ -195,7 +195,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             Event::Block(b)=>{
                 println!("my_head: {} \nincoming_head: {}", &head.hash(), b.hash());
                 if !b.verify() || b.hash() == head.hash() { continue'main }
-                match blockdb.get(&b.hash()) {
+                // if blockdb.get_pinned("block".to_owned()+&b.height.to_string()).expect("blockdb failed").is_some(){continue'main}
+                match blockdb.get_pinned(&b.hash()) {
                     Err(_)      =>{panic!("db failure")}
                     Ok(Some(_)) =>{
                         //TODO consensus check
@@ -223,7 +224,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                         if merkle_root!=b.hashedblock.blockdata.merkle_root { continue'main }
                         for k in b.hashedblock.blockdata.txes.iter() {
                             let hexed = hex::encode(k);
-                            if !mempool.contains_key(&hex::encode(k)){ 
+                            if !mempool.contains_key(&hexed){
+                                if txdb.get_pinned(&hexed).expect("txdb failure").is_some(){continue'main}
                                 let req_tx = match client.request(
                                     "Synchronize", 
                                     &serde_json::to_vec(&SyncType::TransactionAtHash(hexed.clone())).expect("couldn't serialize request for transaction"),
@@ -253,7 +255,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                         block_height+=1;
-                        head = b.clone();
+                        head = b;
                         let head_hash = &head.hash();
                         blockdb.put("height", block_height.to_string()).expect("couldn't store new chain height");
                         blockdb.put("block".to_owned() + &block_height.to_string(), &head_hash).expect("couldn't store new block hash to its height");
@@ -298,7 +300,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     let txhashes: Vec<[u8;32]> = txhashese.iter().map(|k| {
                         println!("{}",k);
                         mempool.remove(k);
-                        vec_to_arr(&hex::decode(k.clone()).expect("hex decode failed"))
+                        vec_to_arr(&hex::decode(&k).expect("hex decode failed"))
                     } ).collect();
                     pool_size = 0;
                     block_height +=1;
@@ -328,8 +330,10 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                 sendr.send(block_height).expect("couldn't send height to rpc");
             },
             Event::GetTx(hash, sendr)=>{
-                let tx = mempool.get(&hash).unwrap();
-                sendr.send(tx.clone());
+                sendr.send(match mempool.get(&hash){
+                    Some(t)=>t.clone(),
+                    None=>continue
+                });
             }
             Event::Chat(s)=>{
                 //incoming chat
