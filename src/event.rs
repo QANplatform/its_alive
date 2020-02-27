@@ -25,6 +25,7 @@ pub enum Event {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum SyncType {
     GetHeight,
+    GetNemezis,
     Height(u64),
     AtHeight(u64),
     BlockHash(String),

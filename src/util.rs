@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use blake2::{Blake2b, /*Blake2s,*/ Digest as BDigest};
 
 pub fn timestamp() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).expect("timestamp").as_secs()
+    SystemTime::now().duration_since(UNIX_EPOCH).expect("timestamp").as_millis() as u64
 }
 
 pub fn urandom(n: usize) -> Vec<u8> {

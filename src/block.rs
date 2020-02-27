@@ -152,11 +152,15 @@ impl Block{
     }
 
     pub fn validate(&self, timestamp: u64, height: u64, prev_hash: &str) -> (bool, bool, bool){
-        ( timestamp > self.timestamp(), height > self.height, prev_hash == self.hashedblock.blockdata.prev_hash )
+        ( timestamp < self.timestamp(), height < self.height, prev_hash == self.hashedblock.blockdata.prev_hash )
     }
 
     pub fn hash(&self)->String{
         self.hashedblock.hash.clone()
+    }
+
+    pub fn merkle(&self)->Vec<u8>{
+        self.hashedblock.blockdata.merkle_root.clone()
     }
 
     pub fn timestamp(&self)->u64{

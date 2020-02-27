@@ -24,7 +24,7 @@ blake2 = "*"
 rocksdb = "0.13.0"
 rmp-serde = "0.14.0"
 glp = { path = "./fence" , optional = true}
-natsclient = { git = "https://github.com/encabulators/natsclient" }
+natsclient = { git = "https://github.com/deuszex/natsclient/" }
 ed25519-dalek = { git = "https://github.com/Silur/ed25519-dalek.git" }
 wasmi = "0.5.1"
 wasmprinter = "0.2.0"

@@ -14,7 +14,7 @@ impl ConsensusSettings {
         ConsensusSettings{
             min_tx      :   10,
             min_size    :   1000,
-            min_time    :   10,
+            min_time    :   10000,
         }
     }
 

@@ -1,7 +1,7 @@
 use std::io::Write;
 
 #[cfg(not(feature = "quantum"))]
-pub fn generate_nemezis_block(kp: &ed25519_dalek::Keypair){
+pub fn generate_nemezis_block(kp: &ed25519_dalek::Keypair) -> (crate::block::Block, crate::transaction::Transaction){
     let ConsensusSettings = crate::conset::ConsensusSettings::default();
     let nemezis_body = crate::transaction::TxBody::new([0;32], ConsensusSettings.serialize().as_bytes().to_vec()); 
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &kp);
@@ -10,10 +10,11 @@ pub fn generate_nemezis_block(kp: &ed25519_dalek::Keypair){
     let block = crate::block::Block::new(hex::encode([0;32]), nemezis_vec, &kp, 0);
     let mut pemf = std::fs::File::create(std::path::Path::new("NEMEZIS")).unwrap();
     pemf.write_fmt(format_args!("{}", serde_json::to_string(&block).unwrap()));
+    (block, nemesis_tx)
 }
 
 #[cfg(feature = "quantum")]
-pub fn generate_nemezis_block(kp: &glp::glp::GlpSk){
+pub fn generate_nemezis_block(kp: &glp::glp::GlpSk) -> (crate::block::Block, crate::transaction::Transaction){
     let ConsensusSettings = crate::conset::ConsensusSettings::default();
     let nemezis_body = crate::transaction::TxBody::new([0;32], ConsensusSettings.serialize().as_bytes().to_vec()); 
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &kp);
@@ -22,4 +23,5 @@ pub fn generate_nemezis_block(kp: &glp::glp::GlpSk){
     let block = crate::block::Block::new(hex::encode([0;32]), nemezis_vec, &kp, 0);
     let mut pemf = std::fs::File::create(std::path::Path::new("qNEMEZIS")).unwrap();
     pemf.write_fmt(format_args!("{}", serde_json::to_string(&block).unwrap()));
+    (block, nemesis_tx)
 }
