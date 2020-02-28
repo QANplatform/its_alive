@@ -1,16 +1,20 @@
-use crate::user_client::{start_client, start_stdin_handler};
+use crate::user_client::{start_client, start_sync_sub, start_stdin_handler};
 use crate::transaction::{Transaction, TxBody};
 use natsclient::{self, ClientOptions};
 use std::{
+    time::Duration,
     sync::{Arc, RwLock},
+    path::Path,
+    fs::File,
     io::Read,
     collections::HashMap,
 };
 use crate::pk::{PATHNAME, PetKey};
-use crate::event::Event;
-use crate::block::{Block, merge};
+use crate::event::{SyncType, Event};
+use crate::block::{Block, merge, SyncBlock};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
+use crate::sync::{sync, genesis_getter};
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpPk, gen_pk};
 use rocksdb::DB;
@@ -19,196 +23,276 @@ use rocksdb::DB;
 pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     println!("q_edition");
     let config = crate::config::get_config();
-
-    info!("Starting market service...");
     let opts = ClientOptions::builder()
         .cluster_uris(config.bootstrap.clone())
-        .connect_timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10))
         .reconnect_attempts(255)
-        .build().expect("38:clientoptions builder");
+        .build().expect("building nats client failed");
+    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
+    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
+    let mut accounts = DB::open_default("qaccounts.db").expect("cannot open accountsdb");
+
 
     let keys = if std::path::Path::new(PATHNAME).exists(){
         PetKey::from_pem(PATHNAME)
     }else{
-        PetKey::new()
+        let pk = PetKey::new();
+        pk.write_pem();
+        pk
     };
-    keys.write_pem();
-    
-    // let sk = glp::glp::gen_sk();
-    // println!("sk:\n{:?}\n",hex::encode(sk.to_bytes()));
-    // let pk = gen_pk(&keys.glp);
-    // println!("pk:\n{:?}\n",hex::encode(pk.to_bytes()));
-    // println!("sig\n{:?}\n",hex::encode(glp::glp::sign(&keys.glp, b"nandato".to_vec()).unwrap().to_bytes()));
-
-    crate::nemezis::generate_nemezis_block(&keys.glp);
-    let mut nemezis = std::fs::File::open(std::path::Path::new("qNEMEZIS")).unwrap();
-    let mut nemezis_buffer = String::new();
-    nemezis.read_to_string(&mut nemezis_buffer);
-
-    let txdb = DB::open_default("tx.db").unwrap();
-    let txdb = Arc::new(txdb);
-
-    let mut last_block : Block = serde_json::from_str(&nemezis_buffer).unwrap();
-    let mut last_hash = last_block.hash();
-
-    let blockdb = DB::open_default("db.db").unwrap();
-    blockdb.put(last_hash.clone(), &nemezis_buffer).unwrap();
-    blockdb.put("block0", last_hash.clone()).unwrap();
-    let blockdb = Arc::new(blockdb);
-
-
-    let mut pubkeys : HashMap<Vec<u8>, GlpPk> = HashMap::new();
-
-    let mut mempool : HashMap<String, Transaction> = HashMap::new();
-    let mut mempool = Arc::new(RwLock::new(mempool));
-
-    let mut accounts = DB::open_default("accounts.db").unwrap();
-    let mut accounts = Arc::new(accounts);
 
     let (sndr, recv) = std::sync::mpsc::sync_channel(777);
 
-    start_stdin_handler(sndr.clone());
-
-    let vm = Arc::new(RwLock::new(crate::vm::VM::new()));
-    let tvm = vm.clone();
-
-    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&mempool), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
-
     let mut client = start_client(opts, sndr.clone());
-    let ConsensusSettings = ConsensusSettings::default();
+    
+    let mut head : Block = genesis_getter("qNEMEZIS", &keys, &mut txdb, &mut blockdb, &client);
+    let nemezis_hash = head.hash();
+    let mut block_height : u64 = match blockdb.get("height"){
+        Ok(Some(h))=>String::from_utf8_lossy(&h).parse::<u64>().expect("cannot parse my stored chain height before sync"),
+        Ok(None)=>{blockdb.put("height",0.to_string()).unwrap(); 0},
+        Err(e)=>panic!(e)
+    };
+
+    let mut block_height = sync(&mut txdb, &mut blockdb, &client, block_height);
+    println!("genezis hash: {}", nemezis_hash);
+    let consensus_settings = ConsensusSettings::default();
+
+    let mut pubkeys : HashMap<String, Vec<u8>> = HashMap::new();
+    let mut mempool : HashMap<String, Transaction> = HashMap::new();
+
+    let mut vm = Arc::new(RwLock::new(crate::vm::VM::new()));
+    let mut tvm = vm.clone();
     let mut pool_size : usize = 0;
-    let mut block_height : u64 = 0;
-    client.publish("PubKey", &gen_pk(&keys.glp).to_bytes(), None);
-    loop{
-        let ev = recv.recv().unwrap();
+
+    client.publish("PubKey", &glp::glp::gen_pk(&keys.glp).to_bytes(), None);
+    start_stdin_handler(sndr.clone());
+    start_sync_sub(sndr.clone(), &client);
+
+    let mut txdb = Arc::new(txdb);
+    let mut blockdb = Arc::new(blockdb);
+    let mut accounts = Arc::new(accounts);
+    crate::rpc::start_rpc(sndr.clone(), blockdb.clone(), txdb.clone(), Arc::clone(&accounts), config.rpc_auth.clone(), tvm);
+
+    println!("main functionality starting");
+    'main:loop{
+        let ev = recv.recv().expect("internal channel failed on receive");
         match ev {
             Event::Block(b)=>{
-                if b.validate() {
-                    for k in b.hashedblock.blockdata.txes.iter() {
-                        if !mempool.read().unwrap().contains_key(&hex::encode(k)){ continue }
-                    }
-                    let tree = static_merkle_tree::Tree::from_hashes(b.hashedblock.blockdata.txes.clone(),merge);
-                    let merkle_root : Vec<u8> = tree.get_root_hash().unwrap().to_vec();
-                    if merkle_root!=b.hashedblock.blockdata.merkle_root {continue}
-                    loop{
-                        match mempool.try_write() {
-                            Ok(mut pool) => {
-                                for k in b.hashedblock.blockdata.txes.iter(){
-                                    match pool.remove(&hex::encode(k)){
-                                        Some(x)=>{
-                                            txdb.put(k, x.serialize());
-                                        },
-                                        None=>continue
-                                    }
-                                }
-                                break
-                            },
-                            Err(_) => continue,
+                println!("my_head: {} \nincoming_head: {}", &head.hash(), b.hash());
+                if !b.verify() || b.hash() == head.hash() { continue'main }
+                // if blockdb.get_pinned("block".to_owned()+&b.height.to_string()).expect("blockdb failed").is_some(){continue'main}
+                match blockdb.get_pinned(&b.hash()) {
+                    Err(_)      =>{panic!("db failure")}
+                    Ok(Some(_)) =>{
+                        //TODO consensus check
+                        if b.hash() == head.hash() && b.sig[0] < head.sig[0]{
+                            head = b;
+                            blockdb.put("block".to_owned()+&block_height.to_string(), &head.hash()).unwrap();
+                            blockdb.put(head.hash(), serde_json::to_string(&head).unwrap()).unwrap();
+                            blockdb.flush().unwrap();
+                            println!("new head accepted: {}", &head.hash());
                         }
-                    };
-                    block_height+=1;
-                    last_hash = b.hash();
-                    last_block = b.clone();
+                        continue'main
+                    }
+                    Ok(None) => {
+                        if b.height == head.height && b.merkle() == head.merkle() && head.timestamp() < b.timestamp(){
+                            blockdb.delete(head.hash());
+                            head = b;
+                            blockdb.put("block".to_owned()+&head.height.to_string(), head.hash());
+                            blockdb.put(head.hash(), serde_json::to_string(&head).unwrap()).unwrap();
+                            blockdb.flush().unwrap();
+                            println!("new head accepted: {}", &head.hash());
+                            continue'main
+                        }
+                        let tree = static_merkle_tree::Tree::from_hashes(b.hashedblock.blockdata.txes.clone(),merge);
+                        let merkle_root : Vec<u8> = tree.get_root_hash().expect("couldn't get root while building merkle tree on received block").to_vec();
+                        if merkle_root!=b.hashedblock.blockdata.merkle_root { continue'main }
+                        for k in b.hashedblock.blockdata.txes.iter() {
+                            let hexed = hex::encode(k);
+                            if !mempool.contains_key(&hexed){
+                                if txdb.get_pinned(&hexed).expect("txdb failure").is_some(){continue'main}
+                                let req_tx = match client.request(
+                                    "Synchronize", 
+                                    &serde_json::to_vec(&SyncType::TransactionAtHash(hexed.clone())).expect("couldn't serialize request for transaction"),
+                                    std::time::Duration::new(8,0)){
+                                        Ok(h)=>h.payload,
+                                        Err(e)=>{ println!("{}",e); continue'main }
+                                };
+                                let tx : Transaction = match serde_json::from_slice(&req_tx).unwrap(){
+                                    SyncType::Transaction(h)=>Transaction::deserialize_slice(&h), _ => panic!()};
+                                if tx.verify(){
+                                    mempool.insert(hexed, tx);
+                                }else{
+                                    panic!("tx invalid in chain");
+                                }
+                            }
+                        }
 
-                    let lhs = &last_hash;
-                    println!("blockhash: {}", lhs);
-
-                    blockdb.put(&lhs, &serde_json::to_string(&last_block).unwrap()).unwrap();
-                    blockdb.put("block".to_owned()+&block_height.to_string(),lhs);
-
-                    pool_size = 0;
+                        for k in b.hashedblock.blockdata.txes.iter(){
+                            let hexed = hex::encode(k);
+                            match mempool.remove(&hexed){
+                                Some(x)=>{
+                                    txdb.put(k, x.serialize()).expect("txdb failed while making verifying db");
+                                },
+                                None=>{
+                                    panic!("memory pool didn't hold a transaction i already ask for and supposedly received");
+                                }
+                            }
+                        }
+                        block_height+=1;
+                        head = b;
+                        let head_hash = &head.hash();
+                        blockdb.put("height", block_height.to_string()).expect("couldn't store new chain height");
+                        blockdb.put("block".to_owned() + &block_height.to_string(), &head_hash).expect("couldn't store new block hash to its height");
+                        blockdb.put(&head_hash, serde_json::to_string(&head).expect("156")).expect("failed to put received, verified and validated block in db");
+                        blockdb.flush().unwrap();
+                        txdb.flush().unwrap();
+                        println!("at height {} is block {}", block_height, head_hash);
+                        pool_size = 0;
+                    }
                 }
             },
             Event::Transaction(tx)=>{
                 //handle incoming transaction
-                if tx.validate(){
-                    println!("valid transaction");
+                if tx.verify(){
                     pool_size += tx.len();
                     let txh = hex::encode(tx.hash());
-                    println!("tx hash: {}",txh);
                     let recipient = hex::encode(&tx.transaction.recipient);
-                    loop{
-                        match mempool.try_write() {
-                            Ok(mut pool) => {
-                                match pool.insert(txh, tx){
-                                    Some(_)=>break,
-                                    None=>{
-                                        match accounts.get(&recipient){
-                                            Ok(Some(value))=>{accounts.put(recipient, (String::from_utf8(value).unwrap().parse::<u64>().unwrap()+1).to_string());},
-                                            Ok(None)=>{accounts.put(recipient,1.to_string());},
-                                            Err(_)=>{()}
-                                        }
-                                    }
-                                }
-                                break
-                            },
-                            Err(_) => continue,
+                    match mempool.insert(txh.clone(), tx){
+                        Some(_)=>println!("already have: {}", &txh),
+                        None=>{
+                            println!("inserted: {}", &txh);
+                            match accounts.get(&recipient){
+                                Ok(Some(value))=>{
+                                    accounts.put(recipient, 
+                                        (String::from_utf8(value).expect("couldn't read stored account tx count").parse::<u64>()
+                                            .expect("couldn't parse account tx count")+1).to_string())
+                                                .expect("account db failed");
+                                },
+                                Ok(None)=>{accounts.put(recipient,1.to_string()).expect("couldn't put new new account into db");},
+                                Err(_)=>{panic!("account db error")}
+                            }
                         }
-                    };
-
+                    }     
                 }
-                if ConsensusSettings.check_limiters(mempool.read().unwrap().len(),pool_size,last_block.timestamp()){
-                    let mut txhashese: Vec<String> = mempool.read().unwrap().iter().map(|(k, v)| {
-                        txdb.put(k.clone(), v.serialize());
+                if consensus_settings.check_limiters(mempool.len(),pool_size,head.timestamp()){
+                    let mut txhashese: Vec<String> = mempool.iter().map(|(k, v)| {
+                        txdb.put(k.clone(), v.serialize()).expect("txdb failure while making block");
                         k.clone()
                     } ).collect();
-                    loop{
-                        match mempool.try_write() {
-                            Ok(mut pool) => {
-                                pool.clear();
-                                break
-                            },
-                            Err(_) => continue,
-                        }
-                    };
+                    
                     txhashese.sort();
-                    let txhashes: Vec<[u8;32]> = txhashese.iter().map(|k| {println!("{}",k);vec_to_arr(&hex::decode(k.clone()).unwrap())} ).collect();
-                    last_block = Block::new(last_hash.clone(), txhashes, &keys.glp);
-                    client.publish("block.propose", &last_block.block_to_blob(), None);
+                    let txhashes: Vec<[u8;32]> = txhashese.iter().map(|k| {
+                        println!("{}",k);
+                        mempool.remove(k);
+                        vec_to_arr(&hex::decode(&k).expect("hex decode failed"))
+                    } ).collect();
+                    pool_size = 0;
+                    block_height +=1;
+                    head = Block::new(head.hash(), txhashes, &keys.glp, block_height);
+                    let head_hash = head.hash();
+                    blockdb.put("height", block_height.to_string()).expect("couldn't store new height while making block");
+                    blockdb.put("block".to_owned()+&block_height.to_string(), &head_hash).expect("couldn't store block hash to its height");
+                    blockdb.put(&head_hash, serde_json::to_string(&head).expect("couldn't store block to hash while making it"));
+                    println!("at height {} is block {}", block_height, head_hash);
+                    client.publish("block.propose", &serde_json::to_string(&head).expect("couldn't serialize block when making it").as_bytes(), None);
                 }
             },
             Event::RawTransaction(tx)=>{
+                //check transaction validity
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
             },
-            Event::PublishTx(to, data, glp)=>{
-                //TODO sender validity
-                let tx = Transaction::new(TxBody::new(to, data), &glp);
+            Event::PublishTx(to, data, kp)=>{
+                //sender validity
+                let tx = Transaction::new(TxBody::new(to, data), &kp);
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
             },
             Event::String(s)=>{
                 //from stdin
                 client.publish("chat", s.as_bytes(), None);
             },
-            Event::Request(r)=>{
-                match r.as_ref() {
-                    "pubkey" => { client.publish("PubKey", &gen_pk(&keys.glp).to_bytes(), None); },
-                    _ => {},
-                }
+            Event::GetHeight(sendr)=>{
+                sendr.send(block_height).expect("couldn't send height to rpc");
             },
-            Event::PubKey(pubk)=>{
-                let pk = glp::glp::GlpPk::from_bytes(&pubk);
-                pubkeys.insert(blake2b(&pubk).to_vec() ,pk);
-            },
+            Event::GetTx(hash, sendr)=>{
+                sendr.send(match mempool.get(&hash){
+                    Some(t)=>t.clone(),
+                    None=>continue
+                });
+            }
             Event::Chat(s)=>{
+                //incoming chat
                 let tx = Transaction::new(TxBody::new([0;32], s.as_bytes().to_vec()), &keys.glp);
                 client.publish("tx.broadcast", &tx.serialize().as_bytes(), None);
-                println!("{}", s);
+                // println!("{}", s);
             },
-            Event::GetHeight(sendr)=>{
-                sendr.send(block_height).unwrap();
+            Event::PubKey(pubk)=>{
+                let hexhash = hex::encode(blake2b(&pubk));
+                match pubkeys.get(&hexhash){
+                    Some(_)=>{ continue }
+                    None=>{
+                        pubkeys.insert(hexhash ,pubk);
+                        client.publish("PubKey", &glp::glp::gen_pk(&keys.glp).to_bytes(), None);
+                    }
+                }
             },
             Event::VmBuild(file_name, main_send)=>{
                 loop{
                     match vm.try_write(){
                         Ok(mut v)=>{
                             let ret = v.build_from_file("./contracts/".to_owned()+&file_name);
-                            main_send.send(ret).unwrap();
+                            main_send.send(ret).expect("couldn't return new smart contract hash to rpc");
                             break
                         }
-                        Err(_)=>{continue}
+                        Err(_)=>{ continue }
                     }
                 }
-            }
+            },
+            Event::Synchronize(s, r)=>{
+                let dat = match serde_json::from_slice(&s).expect("couldn't deserialize SyncType on received request"){
+                    SyncType::GetHeight => {
+                        //chain height
+                        println!("GetHeight");
+                        SyncType::Height(block_height)
+                    },
+                    SyncType::GetNemezis => {
+                        SyncType::Block(match &blockdb.get(&nemezis_hash).expect("couldn't get my genesis block when someone asked for it"){
+                            Some(b)=>b.to_vec(),
+                            None=> panic!("no genezis block?!")
+                        })
+                    }
+                    SyncType::AtHeight(h) => {
+                        //block hash at h height
+                        println!("got asked height {}", h);
+                        SyncType::BlockHash(String::from_utf8_lossy(match &blockdb.get("block".to_string()+&h.to_string()).expect("couldn't get block at hash"){
+                            Some(h)=>h,
+                            None=> continue'main
+                        }).to_string())
+                    },
+                    SyncType::TransactionAtHash(hash) => {
+                        //get transaction at hash
+                        println!("got asked tx hash {}", hash);
+                        let tx = match mempool.get(&hash){
+                            Some(t) => serde_json::to_vec(&t).expect("couldn't serialize transaction when someone asked for it"),
+                            None => match txdb.get(hash).expect("someone asked for a transaction i don't have in mempool or db"){
+                                Some(x)=> x,
+                                None => continue'main
+                            }
+                        };
+                        SyncType::Transaction(tx)
+                    },
+                    SyncType::BlockAtHash(hash) => {
+                        //get block at hash       
+                        println!("got asked block hash {}", &hash);  
+                        SyncType::Block(match blockdb.get(&hash).expect("blockdb failure when someone asked for it"){
+                            Some(b) => b, None => {println!("someone asked for a block i don't have: {}", &hash); continue'main}
+                        })
+                    },
+                    _ => { continue'main }
+                };
+                // println!("dat: {:?}", dat);
+                client.publish(&r, &serde_json::to_vec(&dat).expect("couldn't serialize an answer to a syncronization request"), None);
+            },
         }
     }
 }

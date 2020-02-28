@@ -24,6 +24,7 @@ pub mod config;
 pub mod block;
 pub mod event;
 pub mod util;
+pub mod sync;
 pub mod rpc;
 pub mod pk;
 pub mod vm;

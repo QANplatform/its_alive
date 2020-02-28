@@ -19,7 +19,7 @@ pub fn start_client(opts: ClientOptions, sndr : std::sync::mpsc::SyncSender<Even
 
     let bsndr = sndr.clone();
     client.subscribe("block.propose", move |msg| {
-        bsndr.send(Event::Block(Block::block_from_vec(&msg.payload)));
+        bsndr.send(Event::Block(serde_json::from_slice(&msg.payload).unwrap()));
         Ok(())
     }).expect("block.propose");
 
