@@ -20,9 +20,9 @@ use rocksdb::DB;
 pub fn genesis_getter(
     genesis : &str, 
     keys    : &PetKey,
-    blockdb : &mut DB, 
-    txdb    : &mut DB,
     client  : &Client)-> Block{
+    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
+    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
     match blockdb.get("block0"){
         Ok(Some(n)) => {
             println!("found zero block hash in db");
@@ -69,12 +69,15 @@ pub fn genesis_getter(
     }
 }
 
-pub fn sync(
-    blockdb : &mut DB, 
-    txdb    : &mut DB,
-    client  : &Client,
-    mut block_height: u64) -> u64{
-    let mut block_height = block_height;
+pub fn sync(client  : &Client) -> u64{
+    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
+    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
+    let mut block_height : u64 = match blockdb.get("height"){
+        Ok(Some(h))=>String::from_utf8_lossy(&h).parse::<u64>().expect("cannot parse my stored chain height before sync"),
+        Ok(None)=>{blockdb.put("height",0.to_string()).unwrap(); 0},
+        Err(e)=>panic!(e)
+    };
+
     let chain_height = match client.request("Synchronize", &serde_json::to_vec(&SyncType::GetHeight).expect("cannot serialize SyncType chain height request"), std::time::Duration::new(8,0)){
         Ok(h)=>{
             match serde_json::from_slice(&h.payload).expect("cannot deserialize SyncType at getting chain height"){SyncType::Height(h)=>h, _ => 0}
@@ -88,6 +91,10 @@ pub fn sync(
             None => {block_height = i-1; break},
         }
     }
+
+    // for (k,_) in blockdb.iterator(rocksdb::IteratorMode::Start){
+    //      println!("{}",String::from_utf8_lossy(&k));
+    // }
     println!("I could verify {} of my blocks",block_height);
 
     if chain_height > block_height{
@@ -104,9 +111,13 @@ pub fn sync(
                 Err(_)      =>{ panic!("db failure") }
                 Ok(Some(_)) =>{ println!("During Sync I found a block I already have: {}", block_hash);}
                 Ok(None)    =>{
-                    let req_block = client.request("Synchronize", 
-                        &serde_json::to_vec(&SyncType::BlockAtHash(block_hash.clone())).expect("couldn't serialize request for block at hash") ,std::time::Duration::new(8,0))
-                            .expect(&format!("sync failed at getting block: {}", &block_hash)).payload;
+                    let req_block = match client.request("Synchronize", 
+                        &serde_json::to_vec(&SyncType::BlockAtHash(block_hash.clone())).expect("couldn't serialize request for block at hash") ,std::time::Duration::new(32,0))
+                           // .expect(&format!("sync failed at getting block: {}", &block_hash)).payload;
+                           {
+                               Ok(r)=>r.payload,
+                               Err(_)=>continue
+                           };
                     let block_vec = match serde_json::from_slice(&req_block).expect("couldn't deserialize message") {
                         SyncType::Block(h)=>h,
                         _ => panic!("not a block as a block in sync")

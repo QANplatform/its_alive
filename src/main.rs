@@ -19,6 +19,7 @@ pub mod user_client;
 pub mod transaction;
 pub mod watparser;
 pub mod nemezis;
+pub mod gendata;
 pub mod conset;
 pub mod config;
 pub mod block;

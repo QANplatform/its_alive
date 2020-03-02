@@ -50,12 +50,6 @@ impl BlockData {
         self.timestamp
     }
 
-    pub fn block_to_blob(&self)->Vec<u8>{
-        let mut block_buf = Vec::new();
-        self.serialize(&mut Serializer::new(&mut block_buf)).expect("block_to_blob");
-        block_buf
-    }
-
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
@@ -74,7 +68,7 @@ impl fmt::Display for HashedBlock {
 impl HashedBlock {
     pub fn new(prev_hash : String, txes : Vec<[u8;32]>) -> Self {
         let blockdata = BlockData::new(prev_hash, txes);
-        let hash = encode(blake2b(&blockdata.block_to_blob()));
+        let hash = encode(blake2b(&serde_json::to_vec(&blockdata).unwrap()));
         HashedBlock{
             blockdata,
             hash 
@@ -85,11 +79,6 @@ impl HashedBlock {
         self.blockdata.timestamp()
     }
 
-    pub fn block_to_blob(&self)->Vec<u8>{
-        let mut block_buf = Vec::new();
-        self.serialize(&mut Serializer::new(&mut block_buf)).expect("block_to_blob");
-        block_buf
-    }
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
@@ -112,7 +101,7 @@ impl Block{
     #[cfg(not(feature = "quantum"))]
     pub fn new(prev_hash: String, txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
-        let sig = kp.sign(&hashedblock.block_to_blob()).to_bytes().to_vec();
+        let sig = kp.sign(&serde_json::to_vec(&hashedblock).unwrap()).to_bytes().to_vec();
         let proposer_pub = kp.public.to_bytes().to_vec();
         Block{
             proposer_pub,
@@ -125,7 +114,7 @@ impl Block{
     #[cfg(feature = "quantum")]
     pub fn new(prev_hash: String, txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
-        let sig = sign(&sk, hashedblock.block_to_blob()).unwrap().to_bytes();
+        let sig = sign(&sk, serde_json::to_vec(&hashedblock).unwrap()).unwrap().to_bytes();
         let proposer_pub = gen_pk(&sk).to_bytes().to_vec();
         Block{
             proposer_pub,
@@ -138,14 +127,14 @@ impl Block{
     #[cfg(feature = "quantum")]
     pub fn verify(&self) -> bool {
         let pk = GlpPk::from_bytes(&self.proposer_pub);
-        verify(&pk, GlpSig::from_bytes(&self.sig), self.hashedblock.block_to_blob()) 
+        verify(&pk, GlpSig::from_bytes(&self.sig), serde_json::to_vec(&self.hashedblock).unwrap()) 
     }
 
     #[cfg(not(feature = "quantum"))]
     pub fn verify(&self) -> bool{
         let pk = PublicKey::from_bytes(&self.proposer_pub).unwrap();
         let sig = Signature::from_bytes(&self.sig).unwrap();
-        match pk.verify(&self.hashedblock.block_to_blob(), &sig){
+        match pk.verify(&serde_json::to_vec(&self.hashedblock).unwrap(), &sig){
             Ok(_)=>true,
             Err(_)=>false
         }
@@ -166,16 +155,6 @@ impl Block{
     pub fn timestamp(&self)->u64{
         self.hashedblock.timestamp()
     }
-
-    pub fn block_to_blob(&self)->Vec<u8>{
-        let mut block_buf = Vec::new();
-        self.serialize(&mut Serializer::new(&mut block_buf)).expect("block_to_blob");
-        block_buf
-    }
-
-    pub fn block_from_vec(v : &Vec<u8>)-> Block{
-        Deserialize::deserialize(&mut Deserializer::new(&v[..])).expect("block_from_vec")
-    } 
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]

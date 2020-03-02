@@ -21,6 +21,10 @@ use rocksdb::DB;
 
 #[cfg(feature = "quantum")]
 pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
+//     crate::gendata::gen_data();
+//     Ok(())
+// }
+
     println!("q_edition");
     let config = crate::config::get_config();
     let opts = ClientOptions::builder()
@@ -28,10 +32,6 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         .connect_timeout(Duration::from_secs(10))
         .reconnect_attempts(255)
         .build().expect("building nats client failed");
-    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
-    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
-    let mut accounts = DB::open_default("qaccounts.db").expect("cannot open accountsdb");
-
 
     let keys = if std::path::Path::new(PATHNAME).exists(){
         PetKey::from_pem(PATHNAME)
@@ -45,17 +45,16 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut client = start_client(opts, sndr.clone());
     
-    let mut head : Block = genesis_getter("qNEMEZIS", &keys, &mut txdb, &mut blockdb, &client);
+    let mut head : Block = genesis_getter("qNEMEZIS", &keys, &client);
     let nemezis_hash = head.hash();
-    let mut block_height : u64 = match blockdb.get("height"){
-        Ok(Some(h))=>String::from_utf8_lossy(&h).parse::<u64>().expect("cannot parse my stored chain height before sync"),
-        Ok(None)=>{blockdb.put("height",0.to_string()).unwrap(); 0},
-        Err(e)=>panic!(e)
-    };
-
-    let mut block_height = sync(&mut txdb, &mut blockdb, &client, block_height);
+    let mut block_height = sync(&client);
     println!("genezis hash: {}", nemezis_hash);
     let consensus_settings = ConsensusSettings::default();
+
+    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
+    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
+    let mut accounts = DB::open_default("qaccounts.db").expect("cannot open accountsdb");
+
 
     let mut pubkeys : HashMap<String, Vec<u8>> = HashMap::new();
     let mut mempool : HashMap<String, Transaction> = HashMap::new();
@@ -266,7 +265,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         println!("got asked height {}", h);
                         SyncType::BlockHash(String::from_utf8_lossy(match &blockdb.get("block".to_string()+&h.to_string()).expect("couldn't get block at hash"){
                             Some(h)=>h,
-                            None=> continue'main
+                            None=> {println!("i'm not this high");continue'main}
                         }).to_string())
                     },
                     SyncType::TransactionAtHash(hash) => {
@@ -276,7 +275,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                             Some(t) => serde_json::to_vec(&t).expect("couldn't serialize transaction when someone asked for it"),
                             None => match txdb.get(hash).expect("someone asked for a transaction i don't have in mempool or db"){
                                 Some(x)=> x,
-                                None => continue'main
+                                None => {println!("i don't have this tx");continue'main}
                             }
                         };
                         SyncType::Transaction(tx)
@@ -285,12 +284,11 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         //get block at hash       
                         println!("got asked block hash {}", &hash);  
                         SyncType::Block(match blockdb.get(&hash).expect("blockdb failure when someone asked for it"){
-                            Some(b) => b, None => {println!("someone asked for a block i don't have: {}", &hash); continue'main}
+                            Some(b) => {println!("i can reply"); b}, None => {println!("someone asked for a block i don't have: {}", &hash); continue'main}
                         })
                     },
-                    _ => { continue'main }
+                    _ => { println!("wrong SyncMessage");continue'main }
                 };
-                // println!("dat: {:?}", dat);
                 client.publish(&r, &serde_json::to_vec(&dat).expect("couldn't serialize an answer to a syncronization request"), None);
             },
         }

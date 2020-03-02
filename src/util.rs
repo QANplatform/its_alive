@@ -11,7 +11,7 @@ pub fn urandom(n: usize) -> Vec<u8> {
     let mut fd = File::open("/dev/urandom").expect("failed to open urandom");
     let mut ret = vec![0; n];
     fd.read(&mut ret).expect("failed to read urandom");
-    println!("urandom in new line:\n {:?}", ret);
+    // println!("urandom in new line:\n {:?}", ret);
     ret.to_vec()
 }
 
