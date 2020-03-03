@@ -28,16 +28,4 @@ impl ConsensusSettings {
         }
         false
     }
-
-    pub fn serialize(&self) -> String {
-        serde_json::to_string(&self).unwrap()
-    }
-
-    pub fn deserialize( s : &str ) -> Self {
-        serde_json::from_str(s).unwrap()
-    }
-
-    pub fn deserialize_slice( s :&[u8] ) -> Self {
-        serde_json::from_slice(s).unwrap()
-    }
 }

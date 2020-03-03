@@ -55,13 +55,13 @@ pub enum VMReturn{
 }
 
 impl VMReturn {
-	pub fn ser(self)->Vec<u8>{
+	pub fn ser(&self)->Vec<u8>{
 		let mut buf = Vec::new();
-        self.serialize(&mut Serializer::new(&mut buf)).expect("failed to serialize VMReturn");
+        &self.serialize(&mut Serializer::new(&mut buf)).expect("failed to serialize VMReturn");
         buf
 	}
 
-	pub fn deser(s : Vec<u8>)-> Self{
+	pub fn deser(s : &Vec<u8>)-> Self{
 		Deserialize::deserialize(&mut Deserializer::new(&s[..])).expect("failed to deserialize VMReturn")
 	}
 }
@@ -87,8 +87,7 @@ impl VM{
 	}
 
 	pub fn add_contract(&mut self, module: Vec<u8>) -> String{
-		let module_owned = module.to_vec(); 
-		let instance = Module::from_buffer(module_owned).unwrap();
+		let instance = Module::from_buffer(&module).unwrap();
 		let mod_instance = ModuleInstance::new(&instance, &ImportsBuilder::default())
 			.expect("Instantiation failed.")
 			.run_start(&mut NopExternals)
@@ -131,10 +130,7 @@ impl VM{
 		let mut file = File::open(f).unwrap();
 		let mut buf : Vec<u8>= Vec::new();
 		file.read_to_end(&mut buf).unwrap();
-
-		let buf_clone = buf.clone();
-		let price = watparser::parse(buf_clone);
-
+		let price = watparser::parse(&buf);
 		buf
 
 		//Module::from_buffer(buf).unwrap()

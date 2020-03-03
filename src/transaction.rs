@@ -35,24 +35,12 @@ impl TxBody{
         }
     }
 
-    pub fn serialize(&self)->String{
-        serde_json::to_string(&self).unwrap()
-    }
-
     pub fn hash(&self) -> [u8;32]{
-        blake2b(&self.serialize().as_bytes().to_vec())
-    }
-
-    pub fn deserialize(v : &str)-> Transaction{
-        serde_json::from_str(&v).unwrap()
-    }
-
-    pub fn deserialize_slice( s :&[u8] ) -> Self {
-        serde_json::from_slice(s).unwrap()
+        blake2b(&serde_json::to_vec(&self).unwrap())
     }
 
     pub fn len(&self) -> usize{
-        36+self.data.len()
+        48+self.data.len()
     }
 }
 
@@ -79,7 +67,7 @@ impl Transaction{
     #[cfg(not(feature = "quantum"))]
     pub fn new( transaction: TxBody, kp: &Keypair ) -> Transaction {
         let sig = kp.sign(&transaction.serialize().as_bytes().to_vec());
-        Transaction { transaction , pubkey: kp.public.clone().to_bytes(), sig: sig.to_bytes().to_vec() }
+        Transaction { transaction , pubkey: kp.public.to_bytes(), sig: sig.to_bytes().to_vec() }
     }
 
     #[cfg(not(feature = "quantum"))]
@@ -94,7 +82,7 @@ impl Transaction{
 
     #[cfg(feature = "quantum")]
     pub fn new( transaction: TxBody, sk: &GlpSk ) -> Transaction {
-        let sig = sign(&sk, transaction.serialize().as_bytes().to_vec()).unwrap();
+        let sig = sign(&sk, serde_json::to_vec(&transaction).unwrap()).unwrap();
         Transaction { transaction , pubkey: gen_pk(&sk).to_bytes(), sig: sig.to_bytes() }
     }
 
@@ -102,24 +90,11 @@ impl Transaction{
     pub fn verify(&self) -> bool{
         let pk = GlpPk::from_bytes(&self.pubkey);
         let qsig = GlpSig::from_bytes(&self.sig);
-        verify(&pk,qsig,self.transaction.serialize().as_bytes().to_vec())
-    }
-
-
-    pub fn serialize(&self)->String{
-        serde_json::to_string(&self).unwrap()
+        verify(&pk,&qsig,&serde_json::to_vec(&self.transaction).unwrap())
     }
 
     pub fn hash(&self) -> [u8;32]{
-        blake2b(&self.serialize().as_bytes().to_vec())
-    }
-
-    pub fn deserialize(v : &str)-> Transaction{
-        serde_json::from_str(&v).unwrap()
-    }
-
-    pub fn deserialize_slice( s :&[u8] ) -> Self {
-        serde_json::from_slice(s).unwrap()
+        blake2b(&serde_json::to_vec(&self).unwrap())
     }
 
     pub fn len(&self) -> usize{

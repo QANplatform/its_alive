@@ -14,7 +14,7 @@ use std::{
 
 #[derive(Deserialize)]
 struct HashGetter {
-	hash: String,
+	hash: [u8;32],
 }
 #[derive(Deserialize)]
 struct IntGetter {
@@ -22,7 +22,8 @@ struct IntGetter {
 }
 #[derive(Deserialize)]
 struct RawTransaction {
-	tx: crate::transaction::Transaction,
+    tx: Vec<u8>
+	// tx: crate::transaction::Transaction,
 }
 #[derive(Deserialize)]
 struct PublishTransaction {

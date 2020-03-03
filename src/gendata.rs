@@ -11,7 +11,7 @@ use std::{
 };
 use crate::pk::{PATHNAME, PetKey};
 use crate::event::{SyncType, Event};
-use crate::block::{Block, merge, SyncBlock};
+use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
 use crate::sync::{sync, genesis_getter};
@@ -28,23 +28,21 @@ pub fn gen_data(){
     let mut block_height = 0;
     blockdb.put("height", &block_height.to_string()).expect("couldn't store new chain height");
     blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).expect("couldn't store new block hash to its height");
-    blockdb.put(&head.hash(), serde_json::to_string(&head).expect("156")).expect("failed to put received, verified and validated block in db");
-    txdb.put(hex::encode(tx.hash()), serde_json::to_string(&tx).unwrap());
+    blockdb.put(&head.hash(), serde_json::to_vec(&head).expect("156")).expect("failed to put received, verified and validated block in db");
+    txdb.put(tx.hash(), serde_json::to_vec(&tx).unwrap());
     println!("start at :{}", crate::util::timestamp());
-    for i in 0..128{
+    for i in 0..16{
         let mut tx_es = Vec::new();
-        for j in 0..8192{
+        for j in 0..8196{
             let tx = Transaction::new(TxBody::new([0;32], crate::util::urandom(980)), &keys.glp);
-            let txh = tx.hash();
-            txdb.put(hex::encode(txh), serde_json::to_string(&tx).unwrap());
-            tx_es.push(txh);
+            txdb.put(tx.hash(), serde_json::to_vec(&tx).unwrap());
+            tx_es.push(tx.hash());
         }
         block_height+=1;
-        let b = Block::new(head.hash(), tx_es, &keys.glp, block_height);
-        head = b;
+        head = Block::new(head.hash(), tx_es, &keys.glp, block_height);
         blockdb.put("height", block_height.to_string()).expect("couldn't store new chain height");
         blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).expect("couldn't store new block hash to its height");
-        blockdb.put(&head.hash(), serde_json::to_string(&head).expect("156")).expect("failed to put received, verified and validated block in db");
+        blockdb.put(&head.hash(), serde_json::to_vec(&head).expect("156")).expect("failed to put received, verified and validated block in db");
         blockdb.flush().unwrap();
         txdb.flush().unwrap();
         println!("block {} done at:{}", i, crate::util::timestamp());

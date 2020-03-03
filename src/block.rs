@@ -19,7 +19,7 @@ pub fn merge(l:&[u8;32],r:&[u8;32])->[u8;32]{
 pub struct BlockData {
     pub timestamp   : u64,
     pub merkle_root : Vec<u8>,
-    pub prev_hash   : String,
+    pub prev_hash   : [u8;32],
     pub txes        : Vec<[u8;32]>,
 }
 
@@ -29,14 +29,14 @@ impl fmt::Display for BlockData {
         for i in &self.txes{
             tx_bases.push(encode(&i));
         } 
-        write!(f, "timestamp : {}\nmerkle_root : {}\nprev_hash : {}\ntxes : {:?}",
+        write!(f, "timestamp : {}\nmerkle_root : {}\nprev_hash : {:?}\ntxes : {:?}",
         self.timestamp, encode(&self.merkle_root), self.prev_hash, tx_bases)
     }
 }
 
 impl BlockData {
-    pub fn new(prev_hash : String, txes : Vec<[u8;32]>) -> Self {
-        let tree = static_merkle_tree::Tree::from_hashes(txes.clone(),merge);
+    pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Self {
+        let tree = static_merkle_tree::Tree::from_hashes(txes.to_vec(),merge);
         let merkle_root : Vec<u8> = tree.get_root_hash().unwrap().to_vec();
         BlockData{
             prev_hash,
@@ -55,20 +55,20 @@ impl BlockData {
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct HashedBlock {
     pub blockdata   : BlockData,
-    pub hash        : String,
+    pub hash        : [u8;32],
 }
 
 impl fmt::Display for HashedBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "blockdata: {} \nhash : {}",
+        write!(f, "blockdata: {} \nhash : {:?}",
         self.blockdata, self.hash)
     }
 }
 
 impl HashedBlock {
-    pub fn new(prev_hash : String, txes : Vec<[u8;32]>) -> Self {
+    pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Self {
         let blockdata = BlockData::new(prev_hash, txes);
-        let hash = encode(blake2b(&serde_json::to_vec(&blockdata).unwrap()));
+        let hash = blake2b(&serde_json::to_vec(&blockdata).unwrap());
         HashedBlock{
             blockdata,
             hash 
@@ -99,7 +99,7 @@ impl fmt::Display for Block {
 
 impl Block{
     #[cfg(not(feature = "quantum"))]
-    pub fn new(prev_hash: String, txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Block {
+    pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
         let sig = kp.sign(&serde_json::to_vec(&hashedblock).unwrap()).to_bytes().to_vec();
         let proposer_pub = kp.public.to_bytes().to_vec();
@@ -112,7 +112,7 @@ impl Block{
     }
 
     #[cfg(feature = "quantum")]
-    pub fn new(prev_hash: String, txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Block {
+    pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
         let sig = sign(&sk, serde_json::to_vec(&hashedblock).unwrap()).unwrap().to_bytes();
         let proposer_pub = gen_pk(&sk).to_bytes().to_vec();
@@ -127,7 +127,7 @@ impl Block{
     #[cfg(feature = "quantum")]
     pub fn verify(&self) -> bool {
         let pk = GlpPk::from_bytes(&self.proposer_pub);
-        verify(&pk, GlpSig::from_bytes(&self.sig), serde_json::to_vec(&self.hashedblock).unwrap()) 
+        verify(&pk, &GlpSig::from_bytes(&self.sig), &serde_json::to_vec(&self.hashedblock).unwrap()) 
     }
 
     #[cfg(not(feature = "quantum"))]
@@ -140,12 +140,12 @@ impl Block{
         }
     }
 
-    pub fn validate(&self, timestamp: u64, height: u64, prev_hash: &str) -> (bool, bool, bool){
+    pub fn validate(&self, timestamp: u64, height: u64, prev_hash: [u8;32]) -> (bool, bool, bool){
         ( timestamp < self.timestamp(), height < self.height, prev_hash == self.hashedblock.blockdata.prev_hash )
     }
 
-    pub fn hash(&self)->String{
-        self.hashedblock.hash.clone()
+    pub fn hash(&self)->[u8;32]{
+        self.hashedblock.hash
     }
 
     pub fn merkle(&self)->Vec<u8>{
@@ -155,12 +155,6 @@ impl Block{
     pub fn timestamp(&self)->u64{
         self.hashedblock.timestamp()
     }
-}
-
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
-pub struct SyncBlock {
-    pub block : Block,
-    pub height: String,
 }
 
 #[test]

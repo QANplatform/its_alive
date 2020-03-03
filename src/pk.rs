@@ -70,7 +70,7 @@ impl PetKey {
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn from_bytes(b : Vec<u8>) -> Self{
+    pub fn from_bytes(b : &Vec<u8>) -> Self{
         let mut ec  : [u8;EC_PK_SIZE]= [0;EC_PK_SIZE];
         ec.copy_from_slice(&b[..]);
         PetKey{
@@ -79,7 +79,7 @@ impl PetKey {
     }
 
     #[cfg(feature = "quantum")]
-    pub fn from_bytes(b : Vec<u8>) -> Self{
+    pub fn from_bytes(b : &Vec<u8>) -> Self{
         let mut glp : [u8;Q_PK_SIZE] = [0;Q_PK_SIZE];
         let mut ec  : [u8;EC_PK_SIZE]= [0;EC_PK_SIZE];
         
@@ -101,7 +101,7 @@ impl PetKey {
         let mut pemf = File::open(Path::new(pathname)).unwrap();
         let mut buffer = Vec::new();
         pemf.read_to_end(&mut buffer);
-        Self::from_bytes(buffer)
+        Self::from_bytes(&buffer)
     }
 }
 

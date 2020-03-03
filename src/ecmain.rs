@@ -12,7 +12,7 @@ use std::{
 use crate::pk::{PetKey, PATHNAME};
 use ed25519_dalek::PublicKey;
 use crate::event::{SyncType, Event};
-use crate::block::{Block, merge, SyncBlock};
+use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
 use crate::sync::{sync, genesis_getter};
@@ -23,7 +23,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     println!("ec_edition");
     let config = crate::config::get_config();
     let opts = ClientOptions::builder()
-        .cluster_uris(config.bootstrap.clone())
+        .cluster_uris(&config.bootstrap)
         .connect_timeout(Duration::from_secs(10))
         .reconnect_attempts(255)
         .build().expect("building nats client failed");
