@@ -13,9 +13,8 @@ pub enum Event {
     PublishTx([u8;32], Vec<u8>,glp::glp::GlpSk),
     RawTransaction(Vec<u8>),
     Block(Vec<u8>),
-    // String(String),
     Chat(Vec<u8>),
-    PubKey(Vec<u8>),
+    PubKey(Vec<u8>, Option<String>),
     Synchronize(Vec<u8>, String),
     GetHeight(std::sync::mpsc::SyncSender<u64>),
     VmBuild(std::string::String, std::sync::mpsc::SyncSender<String>),
@@ -31,6 +30,4 @@ pub enum SyncType {
     BlockHash([u8;32]),
     TransactionAtHash([u8;32]),
     BlockAtHash([u8;32]),
-    Transaction(Vec<u8>),
-    Block(Vec<u8>),
 }

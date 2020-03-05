@@ -50,7 +50,7 @@ pub struct Transaction {
     #[cfg(not(feature = "quantum"))]
     pub pubkey      : [u8;32],
     #[cfg(feature = "quantum")]
-    pub pubkey      : Vec<u8>,
+    pub pubkey      : [u8; 32],
     pub sig         : Vec<u8> 
 }
 
@@ -66,15 +66,14 @@ impl fmt::Display for Transaction {
 impl Transaction{
     #[cfg(not(feature = "quantum"))]
     pub fn new( transaction: TxBody, kp: &Keypair ) -> Transaction {
-        let sig = kp.sign(&transaction.serialize().as_bytes().to_vec());
-        Transaction { transaction , pubkey: kp.public.to_bytes(), sig: sig.to_bytes().to_vec() }
+        let sig = kp.sign(&serde_json::to_vec(&transaction).unwrap());
+        Transaction { transaction , pubkey: blake2b(&kp.public.to_bytes().to_vec()), sig: sig.to_bytes().to_vec() }
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn verify(&self) -> bool{
-        let pk = PublicKey::from_bytes(&self.pubkey).unwrap();
+    pub fn verify(&self, pubkey : &PublicKey) -> bool{
         let sig = Signature::from_bytes(&self.sig).unwrap();
-        match pk.verify(self.transaction.serialize().as_bytes(), &sig){
+        match pubkey.verify(&serde_json::to_vec(&self.transaction).unwrap(), &sig){
             Ok(_)=>true,
             Err(_)=>false
         }
@@ -83,14 +82,13 @@ impl Transaction{
     #[cfg(feature = "quantum")]
     pub fn new( transaction: TxBody, sk: &GlpSk ) -> Transaction {
         let sig = sign(&sk, serde_json::to_vec(&transaction).unwrap()).unwrap();
-        Transaction { transaction , pubkey: gen_pk(&sk).to_bytes(), sig: sig.to_bytes() }
+        Transaction { transaction , pubkey: blake2b(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() }
     }
 
     #[cfg(feature = "quantum")]
-    pub fn verify(&self) -> bool{
-        let pk = GlpPk::from_bytes(&self.pubkey);
+    pub fn verify(&self, pubkey : &GlpPk) -> bool{
         let qsig = GlpSig::from_bytes(&self.sig);
-        verify(&pk,&qsig,&serde_json::to_vec(&self.transaction).unwrap())
+        verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).unwrap())
     }
 
     pub fn hash(&self) -> [u8;32]{

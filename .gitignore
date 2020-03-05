@@ -3,9 +3,11 @@ target
 tx.db
 db.db
 accounts.db
+pubkeys.db
 qtx.db
 qdb.db
 qaccounts.db
+qpubkeys.db
 NEMEZIS
 qNEMEZIS
 SECURE_THIS.pem

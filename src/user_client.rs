@@ -33,7 +33,7 @@ pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Eve
 
     let pksndr = sndr.clone();
     client.subscribe("PubKey", move |msg| {
-        pksndr.send(Event::PubKey(msg.payload.to_owned()));
+        pksndr.send(Event::PubKey(msg.payload.to_owned(), msg.reply_to.clone()));
         Ok(())
     }).expect("PubKey");
     client

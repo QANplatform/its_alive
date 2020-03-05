@@ -4,7 +4,7 @@ use std::{
     path::Path
 };
 #[cfg(feature = "quantum")]
-use glp::glp::{GlpSk, gen_sk};
+use glp::glp::{GlpSk, gen_sk, GlpPk, gen_pk};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 
@@ -40,6 +40,16 @@ impl PetKey {
             glp : gen_sk(),
             ec  : Keypair::generate(&mut OsRng)
         }
+    }
+
+    #[cfg(feature = "quantum")]
+    pub fn get_glp_pk(&self) -> GlpPk{
+        gen_pk(&self.glp)
+    }
+
+    #[cfg(feature = "quantum")]
+    pub fn get_glp_pk_bytes(&self) -> Vec<u8>{
+        gen_pk(&self.glp).to_bytes()
     }
 
     #[cfg(not(feature = "quantum"))]

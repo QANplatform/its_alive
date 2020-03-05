@@ -5,6 +5,7 @@ use clap::{App, Arg};
 
 #[derive(Serialize,Deserialize)]
 pub struct Config{
+    pub spv         : u64,
     pub root        : String,
     pub rpc_port    : u16,
     pub rpc_user    : String,
@@ -16,6 +17,7 @@ pub struct Config{
 impl std::default::Default for Config{
     fn default() -> Self{
         Config{
+            spv         : 0,
             root        : "./".into(),
             rpc_port    : 8000,
             rpc_user    : "unexpected".into(),
@@ -65,10 +67,15 @@ pub fn get_config() -> Config {
             .short("r")
             .long("root"),
         Arg::with_name("nats")
-            .help("nats server uri")
+            .help("root directory")
             .takes_value(true)
             .short("n")
             .long("nats"),
+        Arg::with_name("spv")
+            .help("sync depth. 0 is full sync. ex. 50 means \"sync the top 50 blocks\"")
+            .takes_value(true)
+            .short("s")
+            .long("spv"),
     ]).get_matches();
 
  
@@ -86,6 +93,7 @@ pub fn get_config() -> Config {
     if let Some(n) = matches.value_of("nats") { config.bootstrap = vec![n.to_owned()] }
     if let Some(r) = matches.value_of("root") { config.root = r.into() }
     if let Some(p) = matches.value_of("rpc-pwd") { config.rpc_port = p.parse::<u16>().expect("invalid port") }
+    if let Some(s) = matches.value_of("spv") { config.spv =  s.parse::<u64>().expect("invalid sync depth") }
     if !Path::new("./config.toml").exists(){
         File::create("./config.toml").expect("could not create config file").write_fmt(format_args!("{}",config.to_string()));
     }

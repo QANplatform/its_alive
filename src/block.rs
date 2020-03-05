@@ -84,7 +84,7 @@ impl HashedBlock {
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct Block {
     pub hashedblock : HashedBlock,
-    pub proposer_pub: Vec<u8>,
+    pub proposer_pub: [u8;32],
     pub sig         : Vec<u8>,
     pub height      : u64,
 }
@@ -102,7 +102,7 @@ impl Block{
     pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
         let sig = kp.sign(&serde_json::to_vec(&hashedblock).unwrap()).to_bytes().to_vec();
-        let proposer_pub = kp.public.to_bytes().to_vec();
+        let proposer_pub = blake2b(&kp.public.to_bytes().to_vec());
         Block{
             proposer_pub,
             hashedblock, 
@@ -115,7 +115,7 @@ impl Block{
     pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Block {
         let hashedblock = HashedBlock::new(prev_hash, txes);
         let sig = sign(&sk, serde_json::to_vec(&hashedblock).unwrap()).unwrap().to_bytes();
-        let proposer_pub = gen_pk(&sk).to_bytes().to_vec();
+        let proposer_pub = blake2b(&gen_pk(&sk).to_bytes().to_vec());
         Block{
             proposer_pub,
             hashedblock, 
@@ -125,14 +125,12 @@ impl Block{
     }
 
     #[cfg(feature = "quantum")]
-    pub fn verify(&self) -> bool {
-        let pk = GlpPk::from_bytes(&self.proposer_pub);
+    pub fn verify(&self, pk : &GlpPk) -> bool {
         verify(&pk, &GlpSig::from_bytes(&self.sig), &serde_json::to_vec(&self.hashedblock).unwrap()) 
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn verify(&self) -> bool{
-        let pk = PublicKey::from_bytes(&self.proposer_pub).unwrap();
+    pub fn verify(&self, pk : &PublicKey) -> bool{
         let sig = Signature::from_bytes(&self.sig).unwrap();
         match pk.verify(&serde_json::to_vec(&self.hashedblock).unwrap(), &sig){
             Ok(_)=>true,

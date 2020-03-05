@@ -7,7 +7,7 @@ pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> (crate::block::Block,
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &keys.ec);
     let mut nemezis_vec = Vec::new();
     nemezis_vec.push(nemesis_tx.hash());
-    let block = crate::block::Block::new(hex::encode([0;32]), nemezis_vec, &keys.ec, 0);
+    let block = crate::block::Block::new([0;32], nemezis_vec, &keys.ec, 0);
     let mut pemf = std::fs::File::create(std::path::Path::new("NEMEZIS")).unwrap();
     pemf.write_all(&serde_json::to_vec(&block).unwrap());
     (block, nemesis_tx)
