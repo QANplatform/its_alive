@@ -40,7 +40,7 @@ impl Config{
     pub fn get_config() -> Result<Self, QanError> {
         let mut config = if Path::new("./config.toml").exists(){
             let mut buf = String::new();
-            File::open("./config.toml").unwrap().read_to_string(&mut buf);
+            File::open("./config.toml").map_err(|e|QanError::Io(e))?.read_to_string(&mut buf);
             Config::from_string(&buf)?
         }else{
             Config::default()
@@ -95,7 +95,7 @@ impl Config{
         if let Some(p) = matches.value_of("rpc-pwd") { config.rpc_port = p.parse::<u16>().expect("invalid port") }
         if let Some(s) = matches.value_of("spv") { config.spv =  s.parse::<u64>().expect("invalid sync depth") }
         if !Path::new("./config.toml").exists(){
-            File::create("./config.toml").expect("could not create config file").write_fmt(format_args!("{}",config.to_string()?));
+            File::create("./config.toml").map_err(|e|QanError::Io(e))?.write_fmt(format_args!("{}",config.to_string()?));
         }
         Ok(config)
     }

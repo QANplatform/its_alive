@@ -9,7 +9,7 @@ pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block:
     let mut nemezis_vec : Vec<[u8;32]> = Vec::new();
     nemezis_vec.push(nemesis_tx.hash()?);
     let block = crate::block::Block::new([0;32], nemezis_vec, &keys.ec, 0)?;
-    let mut pemf = std::fs::File::create(std::path::Path::new("NEMEZIS")).unwrap();
+    let mut pemf = std::fs::File::create(std::path::Path::new("NEMEZIS")).map_err(|e|QanError::Io(e))?;
     pemf.write_all(&serde_json::to_vec(&block).map_err(|e|QanError::Serde(e))?);
     Ok((block, nemesis_tx))
 }
@@ -22,7 +22,7 @@ pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block:
     let mut nemezis_vec = Vec::new();
     nemezis_vec.push(nemesis_tx.hash()?);
     let block = crate::block::Block::new([0;32], nemezis_vec, &keys.glp, 0)?;
-    let mut pemf = std::fs::File::create(std::path::Path::new("qNEMEZIS")).unwrap();
+    let mut pemf = std::fs::File::create(std::path::Path::new("qNEMEZIS")).map_err(|e|QanError::Io(e))?;
     pemf.write_all(&serde_json::to_vec(&block).map_err(|e|QanError::Serde(e))?);
     Ok((block, nemesis_tx))
 }

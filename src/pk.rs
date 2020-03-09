@@ -104,13 +104,13 @@ impl PetKey {
     }
 
     pub fn write_pem(&self) -> Result<(), QanError>{
-        let mut pemf = File::create(Path::new(PATHNAME)).unwrap();
+        let mut pemf = File::create(Path::new(PATHNAME)).map_err(|e|QanError::Io(e))?;
         pemf.write_all(&self.to_bytes());
         Ok(())
     }
 
     pub fn from_pem(pathname : &str) -> Result<Self, QanError>{
-        let mut pemf = File::open(Path::new(pathname)).unwrap();
+        let mut pemf = File::open(Path::new(pathname)).map_err(|e|QanError::Io(e))?;
         let mut buffer = Vec::new();
         pemf.read_to_end(&mut buffer);
         Self::from_bytes(&buffer)

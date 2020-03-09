@@ -23,40 +23,40 @@ use rocksdb::DB;
 #[cfg(feature = "quantum")]
 pub fn gen_data() -> Result<(), QanError>{
     let keys = crate::pk::PetKey::new();
-    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
-    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
-    let mut pkeys = DB::open_default("qpubkeys.db").expect("cannot open qpubkeys");
+    let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
+    let mut blockdb = DB::open_default("qdb.db").map_err(|e|QanError::Database(e))?;
+    let mut pkeys = DB::open_default("qpubkeys.db").map_err(|e|QanError::Database(e))?;
     let mahkey = keys.get_glp_pk_bytes();
     pkeys.put(blake2b(&mahkey),&mahkey);
-    pkeys.flush().unwrap();
+    pkeys.flush().map_err(|e|QanError::Database(e))?;
 
     let (mut head, tx) = crate::nemezis::generate_nemezis_block(&keys)?;
     let mut block_height = 0;
 
-    blockdb.put("height", &block_height.to_string()).expect("couldn't store new chain height");
-    blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).expect("couldn't store new block hash to its height");
-    blockdb.put(&head.hash(), serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).expect("failed to put received, verified and validated block in db");
-    txdb.put(tx.hash()?, serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?);
+    blockdb.put("height", &block_height.to_string()).map_err(|e|QanError::Database(e))?;
+    blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).map_err(|e|QanError::Database(e))?;
+    blockdb.put(&head.hash(), serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
+    txdb.put(tx.hash()?, serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
     println!("start at :{}", crate::util::timestamp());
     for i in 0..16{
         let mut tx_es = Vec::new();
         for j in 0..8192{
             let tx = Transaction::new(TxBody::new([0;32], crate::util::urandom(980)), &keys.glp)?;
-            txdb.put(tx.hash()?, serde_json::to_vec(&tx).unwrap());
+            txdb.put(tx.hash()?, serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
             tx_es.push(tx.hash()?);
         }
         block_height+=1;
         head = Block::new(head.hash(), tx_es, &keys.glp, block_height)?;
-        blockdb.put("height", block_height.to_string()).expect("couldn't store new chain height");
-        blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).expect("couldn't store new block hash to its height");
-        blockdb.put(&head.hash(), serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).expect("failed to put received, verified and validated block in db");
-        blockdb.flush().unwrap();
-        txdb.flush().unwrap();
+        blockdb.put("height", block_height.to_string()).map_err(|e|QanError::Database(e))?;
+        blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).map_err(|e|QanError::Database(e))?;
+        blockdb.put(&head.hash(), serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
+        blockdb.flush().map_err(|e|QanError::Database(e))?;
+        txdb.flush().map_err(|e|QanError::Database(e))?;
         println!("block {} done at:{}", i, crate::util::timestamp());
     }
     println!("done");
     Ok(())
 }
 
-//128 block
+//16 block
 //8192 tx/block

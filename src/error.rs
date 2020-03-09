@@ -38,7 +38,6 @@ impl std::error::Error for QanError {
             QanError::Serde(ref err) => Some(err),
             // QanError::Crypto(ref err) => Some(err),
             QanError::Database(ref err) => Some(err),
-
         }
     }
 }

@@ -25,13 +25,13 @@ pub fn genesis_getter(
     keys    : &PetKey,
     client  : &Client)-> Result<Block, QanError>{
     #[cfg(feature = "quantum")]
-    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
+    let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
     #[cfg(feature = "quantum")]
-    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
+    let mut blockdb = DB::open_default("qdb.db").map_err(|e|QanError::Database(e))?;
     #[cfg(not(feature = "quantum"))]
-    let mut txdb = DB::open_default("tx.db").expect("cannot open txdb");
+    let mut txdb = DB::open_default("tx.db").map_err(|e|QanError::Database(e))?;
     #[cfg(not(feature = "quantum"))]
-    let mut blockdb = DB::open_default("db.db").expect("cannot open blockdb");
+    let mut blockdb = DB::open_default("db.db").map_err(|e|QanError::Database(e))?;
     let head = match blockdb.get("block0"){
         Ok(Some(n)) => {
             println!("found zero block hash in db");
@@ -60,15 +60,15 @@ pub fn genesis_getter(
                         println!("had to make a genesis block");
                         let (b, t) = crate::nemezis::generate_nemezis_block(&keys)?;
                         let tx = serde_json::to_vec(&t).map_err(|e|QanError::Serde(e))?;
-                        txdb.put(t.hash()?, tx);
-                        txdb.flush().unwrap();
+                        txdb.put(t.hash()?, tx).map_err(|e|QanError::Database(e))?;
+                        txdb.flush().map_err(|e|QanError::Database(e))?;
                         b
                     }
                 }
             };
-            blockdb.put(head.hash(), &serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).expect("cannot place nemezis hash in db");
-            blockdb.put("block0", head.hash()).expect("cannot put nemezis block in db");
-            blockdb.flush().unwrap();
+            blockdb.put(head.hash(), &serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
+            blockdb.put("block0", head.hash()).map_err(|e|QanError::Database(e))?;
+            blockdb.flush().map_err(|e|QanError::Database(e))?;
             head
         },
         Err(e) => panic!(e)
@@ -78,20 +78,20 @@ pub fn genesis_getter(
 
 pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
     #[cfg(feature = "quantum")]
-    let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
+    let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
     #[cfg(feature = "quantum")]
-    let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
+    let mut blockdb = DB::open_default("qdb.db").map_err(|e|QanError::Database(e))?;
     #[cfg(feature = "quantum")]
-    let mut pubkeys = DB::open_default("qpubkeys.db").expect("cannot open blockdb");
+    let mut pubkeys = DB::open_default("qpubkeys.db").map_err(|e|QanError::Database(e))?;
     #[cfg(not(feature = "quantum"))]
-    let mut txdb = DB::open_default("tx.db").expect("cannot open txdb");
+    let mut txdb = DB::open_default("tx.db").map_err(|e|QanError::Database(e))?;
     #[cfg(not(feature = "quantum"))]
-    let mut blockdb = DB::open_default("db.db").expect("cannot open blockdb");
+    let mut blockdb = DB::open_default("db.db").map_err(|e|QanError::Database(e))?;
     #[cfg(not(feature = "quantum"))]
-    let mut pubkeys = DB::open_default("pubkeys.db").expect("cannot open blockdb");
+    let mut pubkeys = DB::open_default("pubkeys.db").map_err(|e|QanError::Database(e))?;
     let mut block_height : u64 = match blockdb.get("height"){
         Ok(Some(h))=>String::from_utf8_lossy(&h).parse::<u64>().expect("cannot parse my stored chain height before sync"),
-        Ok(None)=>{blockdb.put("height",0.to_string()).unwrap(); 0},
+        Ok(None)=>{blockdb.put("height",0.to_string()).map_err(|e|QanError::Database(e))?; 0},
         Err(e)=>panic!(e)
     };
 
@@ -100,15 +100,10 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
         Err(_) => 0
     };
     println!("I have {} block, the chain is {} long",block_height, chain_height);
-
-    // for (k,_) in blockdb.iterator(rocksdb::IteratorMode::Start){
-    //      println!("{}",String::from_utf8_lossy(&k));
-    // }
-    println!("I could verify {} of my blocks",block_height);
     if spv != 0 && chain_height >= spv { block_height = chain_height - spv; }
     else{
         for i in 0..block_height{
-            match blockdb.get("block".to_owned()+&i.to_string()).expect("block db failed") {
+            match blockdb.get("block".to_owned()+&i.to_string()).map_err(|e|QanError::Database(e))? {
                 Some(h) => println!("{:?}",&h),
                 None => {block_height = i-1; break},
             }
@@ -121,8 +116,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
         'blockloop:while block_height < chain_height{
             let block_hash = client.request("Synchronize", 
                 &serde_json::to_vec(&SyncType::AtHeight(block_height)).map_err(|e|QanError::Serde(e))?
-                ,std::time::Duration::new(8,0))
-                    .expect(&format!("sync failed at getting blockheight: {}", block_height.to_string())).payload;
+                ,std::time::Duration::new(8,0)).map_err(|e|QanError::Nats(e))?.payload;
             match blockdb.get_pinned(&block_hash) {
                 Err(_)      =>{ panic!("db failure") }
                 Ok(Some(_)) =>{ println!("During Sync I found a block I already have: {:?}", block_hash);}
@@ -136,7 +130,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                         // println!("got blockdata");
                     let block : Block = serde_json::from_slice(&req_block).map_err(|e|QanError::Serde(e))?;
                     // println!("asking for pubkey : {:?}", &block.proposer_pub);
-                    let pubkey = match pubkeys.get(&block.proposer_pub).expect("db error"){
+                    let pubkey = match pubkeys.get(&block.proposer_pub).map_err(|e|QanError::Database(e))?{
                         Some(pk) => {
                             // println!("got pubkey for block");
                             #[cfg(feature = "quantum")]
@@ -154,7 +148,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                             let pubkey = GlpPk::from_bytes(&pubkey_vec);
                             #[cfg(not(feature = "quantum"))]
                             let pubkey = PublicKey::from_bytes(&pubkey_vec).unwrap();
-                            pubkeys.put(&block.proposer_pub ,pubkey_vec);
+                            pubkeys.put(&block.proposer_pub ,pubkey_vec).map_err(|e|QanError::Database(e))?;
                             pubkey
                         }
                     };
@@ -171,7 +165,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                                         .expect(&format!("sync failed at getting txh: {:?}", &txh)).payload;
                                 match serde_json::from_slice::<Transaction>(&req_tx){
                                     Ok(tx) => {
-                                        let pubkey = match pubkeys.get(&tx.pubkey).expect("db error"){
+                                        let pubkey = match pubkeys.get(&tx.pubkey).map_err(|e|QanError::Database(e))?{
                                             Some(pk) => {
                                                 // println!("got pubkey");
                                                 #[cfg(feature = "quantum")]
@@ -189,12 +183,12 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                                                 let pubkey = GlpPk::from_bytes(&pubkey_vec);
                                                 #[cfg(not(feature = "quantum"))]
                                                 let pubkey = PublicKey::from_bytes(&pubkey_vec).unwrap();
-                                                pubkeys.put(&tx.pubkey ,pubkey_vec);
+                                                pubkeys.put(&tx.pubkey ,pubkey_vec).map_err(|e|QanError::Database(e))?;
                                                 pubkey
                                             }
                                         };
                                         if tx.verify(&pubkey)?{
-                                            txdb.put(&txh, req_tx).expect("txdb failed");
+                                            txdb.put(&txh, req_tx).map_err(|e|QanError::Database(e))?;
                                         }else{
                                             panic!("found cryptographically invalid transaction in chain");
                                         }
@@ -203,14 +197,14 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                             }
                         }
                     }
-                    blockdb.put("block".to_owned()+&block_height.to_string(), block.hash()).expect("blockdb failed");
-                    blockdb.put(&block_hash, req_block).expect("blockdb failed");
+                    blockdb.put("block".to_owned()+&block_height.to_string(), block.hash()).map_err(|e|QanError::Database(e))?;
+                    blockdb.put(&block_hash, req_block).map_err(|e|QanError::Database(e))?;
                 }
             }
             block_height+=1;
-            blockdb.put("height", block_height.to_string()).unwrap();
-            txdb.flush().unwrap();
-            blockdb.flush().unwrap();
+            blockdb.put("height", block_height.to_string()).map_err(|e|QanError::Database(e))?;
+            txdb.flush().map_err(|e|QanError::Database(e))?;
+            blockdb.flush().map_err(|e|QanError::Database(e))?;
         }
         println!("end sync: {}", crate::util::timestamp());
         println!("{}",block_height);

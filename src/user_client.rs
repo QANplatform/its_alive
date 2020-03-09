@@ -10,34 +10,34 @@ use crate::{
     transaction::Transaction
 };
 
-pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Event>) -> Client{
-    let mut client = Client::from_options(opts).expect("13:client from options builder");
-    client.connect().expect("41:client  connect");
+pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Event>) -> Result<Client,QanError>{
+    let mut client = Client::from_options(opts).map_err(|e|QanError::Nats(e))?;
+    client.connect().map_err(|e|QanError::Nats(e))?;
 
     let bsndr = sndr.clone();
     client.subscribe("block.propose", move |msg| {
         bsndr.send(Event::Block(msg.payload.to_owned()));
         Ok(())
-    }).expect("block.propose");
+    }).map_err(|e|QanError::Nats(e))?;
 
     let txsndr = sndr.clone();
     client.subscribe("tx.broadcast", move |msg| {
         txsndr.send(Event::Transaction(msg.payload.to_owned()));
         Ok(())
-    }).expect("tx.broadcast");
+    }).map_err(|e|QanError::Nats(e))?;
 
     let chsndr = sndr.clone();
     client.subscribe("chat", move |msg| {
         chsndr.send(Event::Chat(msg.payload.to_owned()));
         Ok(())
-    }).expect("chat");
+    }).map_err(|e|QanError::Nats(e))?;
 
     let pksndr = sndr.clone();
     client.subscribe("PubKey", move |msg| {
         pksndr.send(Event::PubKey(msg.payload.to_owned(), msg.reply_to.clone()));
         Ok(())
-    }).expect("PubKey");
-    client
+    }).map_err(|e|QanError::Nats(e))?;
+    Ok(client)
 }
 
 pub fn start_sync_sub(sndr : &std::sync::mpsc::SyncSender<Event>, client : &Client) -> Result<(), QanError>{
@@ -46,7 +46,7 @@ pub fn start_sync_sub(sndr : &std::sync::mpsc::SyncSender<Event>, client : &Clie
         let rep = msg.reply_to.clone().unwrap();
         syncsndr.send(Event::Synchronize(msg.payload.to_owned(), rep));
         Ok(())
-    }).expect("Synchronize");
+    }).map_err(|e|QanError::Nats(e))?;
     Ok(())
 }
 
