@@ -3,6 +3,7 @@ use serde_derive::Deserialize;
 
 use crate::block::Block;
 use crate::event::Event;
+use crate::error::QanError;
 
 use jsonrpc_http_server::jsonrpc_core::{self, MetaIoHandler, Metadata, Value, Params};
 use jsonrpc_http_server::{ServerBuilder, cors::AccessControlAllowHeaders, hyper, RestApi,};
@@ -72,9 +73,9 @@ pub fn start_rpc(
                 #[cfg(feature = "quantum")]
                 "0x" => glp::glp::GlpSk::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).expect("decode")),
                 #[cfg(not(feature = "quantum"))]
-                _ => crate::pk::PetKey::from_pem(&parsed.secret).ec,
+                _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().ec,
                 #[cfg(feature = "quantum")]
-                _ => crate::pk::PetKey::from_pem(&parsed.secret).glp,
+                _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().glp,
             };
             match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data, secret)){
                 Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
@@ -103,7 +104,7 @@ pub fn start_rpc(
             };
             match byh_blocks_db.get(&bh) {
                 Ok(Some(value)) => {
-                    let value : Block = serde_json::from_slice(&value).expect("94: cant deserialize block");
+                    let value : Block = serde_json::from_slice(&value).unwrap();
                     // println!("{}",value);
                     return Ok(json![value])
                 },
@@ -137,7 +138,7 @@ pub fn start_rpc(
             let parsed: HashGetter = params.parse().expect("137: cant parse hashgetter");
             match blocks_db.get(&parsed.hash) {
                 Ok(Some(value)) => {
-                    let value : Block = serde_json::from_slice(&value).expect("140: cant deserialize block");
+                    let value : Block = serde_json::from_slice(&value).unwrap();
                     return Ok(json![value])
                 },
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),

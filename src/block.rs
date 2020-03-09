@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use rmps::{Serializer, Deserializer};
+use crate::error::QanError;
 use crate::util::blake2b;
 #[cfg(not(feature = "quantum"))]
 use ed25519_dalek::{Keypair, PublicKey, Signature};
@@ -35,15 +36,15 @@ impl fmt::Display for BlockData {
 }
 
 impl BlockData {
-    pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Self {
+    pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Result<Self, QanError> {
         let tree = static_merkle_tree::Tree::from_hashes(txes.to_vec(),merge);
         let merkle_root : Vec<u8> = tree.get_root_hash().unwrap().to_vec();
-        BlockData{
+        Ok(BlockData{
             prev_hash,
             timestamp: crate::util::timestamp(),
             merkle_root,
             txes,
-        }
+        })
     }
 
     pub fn timestamp(&self) -> u64{
@@ -66,13 +67,13 @@ impl fmt::Display for HashedBlock {
 }
 
 impl HashedBlock {
-    pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Self {
-        let blockdata = BlockData::new(prev_hash, txes);
-        let hash = blake2b(&serde_json::to_vec(&blockdata).unwrap());
-        HashedBlock{
+    pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Result<Self, QanError> {
+        let blockdata = BlockData::new(prev_hash, txes)?;
+        let hash = blake2b(&serde_json::to_vec(&blockdata).map_err(|e|QanError::Serde(e))?);
+        Ok(HashedBlock{
             blockdata,
             hash 
-        }
+        })
     }
 
     pub fn timestamp(&self) -> u64 {
@@ -99,43 +100,43 @@ impl fmt::Display for Block {
 
 impl Block{
     #[cfg(not(feature = "quantum"))]
-    pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Block {
-        let hashedblock = HashedBlock::new(prev_hash, txes);
-        let sig = kp.sign(&serde_json::to_vec(&hashedblock).unwrap()).to_bytes().to_vec();
+    pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Result<Self, QanError> {
+        let hashedblock = HashedBlock::new(prev_hash, txes)?;
+        let sig = kp.sign(&serde_json::to_vec(&hashedblock).map_err(|e|QanError::Serde(e))?).to_bytes().to_vec();
         let proposer_pub = blake2b(&kp.public.to_bytes().to_vec());
-        Block{
+        Ok(Block{
             proposer_pub,
             hashedblock, 
             height,
             sig
-        }
+        })
     }
 
     #[cfg(feature = "quantum")]
-    pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Block {
+    pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Result<Self, QanError> {
         let hashedblock = HashedBlock::new(prev_hash, txes);
-        let sig = sign(&sk, serde_json::to_vec(&hashedblock).unwrap()).unwrap().to_bytes();
+        let sig = sign(&sk, serde_json::to_vec(&hashedblock).map_err(|e|QanError::Serde(e))?).unwrap().to_bytes();
         let proposer_pub = blake2b(&gen_pk(&sk).to_bytes().to_vec());
-        Block{
+        Ok(Block{
             proposer_pub,
             hashedblock, 
             height,
             sig
-        }
+        })
     }
 
     #[cfg(feature = "quantum")]
-    pub fn verify(&self, pk : &GlpPk) -> bool {
-        verify(&pk, &GlpSig::from_bytes(&self.sig), &serde_json::to_vec(&self.hashedblock).unwrap()) 
+    pub fn verify(&self, pk : &GlpPk) -> Result<bool, QanError> {
+        Ok(verify(&pk, &GlpSig::from_bytes(&self.sig), &serde_json::to_vec(&self.hashedblock).map_err(|e|QanError::Serde(e))?))
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn verify(&self, pk : &PublicKey) -> bool{
+    pub fn verify(&self, pk : &PublicKey) -> Result<bool, QanError>{
         let sig = Signature::from_bytes(&self.sig).unwrap();
-        match pk.verify(&serde_json::to_vec(&self.hashedblock).unwrap(), &sig){
+        Ok(match pk.verify(&serde_json::to_vec(&self.hashedblock).map_err(|e|QanError::Serde(e))?, &sig){
             Ok(_)=>true,
             Err(_)=>false
-        }
+        })
     }
 
     pub fn validate(&self, timestamp: u64, height: u64, prev_hash: [u8;32]) -> (bool, bool, bool){

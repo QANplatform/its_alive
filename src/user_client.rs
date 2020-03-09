@@ -6,6 +6,7 @@ use natsclient::{Client, ClientOptions};
 use crate::{
     event::Event,
     block::Block,
+    error::QanError,
     transaction::Transaction
 };
 
@@ -39,13 +40,14 @@ pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Eve
     client
 }
 
-pub fn start_sync_sub(sndr : &std::sync::mpsc::SyncSender<Event>, client : &Client){
+pub fn start_sync_sub(sndr : &std::sync::mpsc::SyncSender<Event>, client : &Client) -> Result<(), QanError>{
     let syncsndr = sndr.clone();
     client.subscribe("Synchronize", move |msg| {
         let rep = msg.reply_to.clone().unwrap();
         syncsndr.send(Event::Synchronize(msg.payload.to_owned(), rep));
         Ok(())
     }).expect("Synchronize");
+    Ok(())
 }
 
 pub fn start_stdin_handler(tsndr : &std::sync::mpsc::SyncSender<Event>){ 

@@ -5,6 +5,7 @@ use ed25519_dalek::{Keypair, PublicKey, Signature};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use crate::util::blake2b;
+use crate::error::QanError;
 use hex::encode;
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpSig, GlpSk, GlpPk, sign, verify, gen_pk};
@@ -35,8 +36,8 @@ impl TxBody{
         }
     }
 
-    pub fn hash(&self) -> [u8;32]{
-        blake2b(&serde_json::to_vec(&self).unwrap())
+    pub fn hash(&self) -> Result<[u8;32],QanError>{
+        Ok(blake2b(&serde_json::to_vec(&self).map_err(|e|QanError::Serde(e))?))
     }
 
     pub fn len(&self) -> usize{
@@ -65,34 +66,34 @@ impl fmt::Display for Transaction {
 
 impl Transaction{
     #[cfg(not(feature = "quantum"))]
-    pub fn new( transaction: TxBody, kp: &Keypair ) -> Transaction {
-        let sig = kp.sign(&serde_json::to_vec(&transaction).unwrap());
-        Transaction { transaction , pubkey: blake2b(&kp.public.to_bytes().to_vec()), sig: sig.to_bytes().to_vec() }
+    pub fn new( transaction: TxBody, kp: &Keypair ) -> Result<Self, QanError> {
+        let sig = kp.sign(&serde_json::to_vec(&transaction).map_err(|e|QanError::Serde(e))?);
+        Ok(Transaction { transaction , pubkey: blake2b(&kp.public.to_bytes().to_vec()), sig: sig.to_bytes().to_vec() })
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn verify(&self, pubkey : &PublicKey) -> bool{
+    pub fn verify(&self, pubkey : &PublicKey) -> Result<bool, QanError>{
         let sig = Signature::from_bytes(&self.sig).unwrap();
-        match pubkey.verify(&serde_json::to_vec(&self.transaction).unwrap(), &sig){
+        Ok(match pubkey.verify(&serde_json::to_vec(&self.transaction).map_err(|e|QanError::Serde(e))?, &sig){
             Ok(_)=>true,
             Err(_)=>false
-        }
+        })
     }
 
     #[cfg(feature = "quantum")]
-    pub fn new( transaction: TxBody, sk: &GlpSk ) -> Transaction {
-        let sig = sign(&sk, serde_json::to_vec(&transaction).unwrap()).unwrap();
+    pub fn new( transaction: TxBody, sk: &GlpSk ) -> Result<Self, QanError> {
+        let sig = sign(&sk, serde_json::to_vec(&transaction).unwrap()).map_err(|e|QanError::Serde(e))?;
         Transaction { transaction , pubkey: blake2b(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() }
     }
 
     #[cfg(feature = "quantum")]
-    pub fn verify(&self, pubkey : &GlpPk) -> bool{
+    pub fn verify(&self, pubkey : &GlpPk) -> Result<bool, QanError>{
         let qsig = GlpSig::from_bytes(&self.sig);
-        verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).unwrap())
+        verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).map_err(|e|QanError::Serde(e))?)
     }
 
-    pub fn hash(&self) -> [u8;32]{
-        blake2b(&serde_json::to_vec(&self).unwrap())
+    pub fn hash(&self) -> Result<[u8;32], QanError>{
+        Ok(blake2b(&serde_json::to_vec(&self).map_err(|e|QanError::Serde(e))?))
     }
 
     pub fn len(&self) -> usize{

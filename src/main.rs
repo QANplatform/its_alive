@@ -23,6 +23,7 @@ pub mod gendata;
 pub mod conset;
 pub mod config;
 pub mod block;
+pub mod error;
 pub mod event;
 pub mod util;
 pub mod sync;

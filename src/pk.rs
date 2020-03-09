@@ -7,6 +7,7 @@ use std::{
 use glp::glp::{GlpSk, gen_sk, GlpPk, gen_pk};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
+use crate::error::QanError;
 
 #[cfg(not(feature = "quantum"))]
 pub const PATHNAME  : &'static str = "./SECURE_THIS.pem";
@@ -80,34 +81,35 @@ impl PetKey {
     }
 
     #[cfg(not(feature = "quantum"))]
-    pub fn from_bytes(b : &Vec<u8>) -> Self{
+    pub fn from_bytes(b : &Vec<u8>) -> Result<Self, QanError>{
         let mut ec  : [u8;EC_PK_SIZE]= [0;EC_PK_SIZE];
         ec.copy_from_slice(&b[..]);
-        PetKey{
+        Ok(PetKey{
             ec  : Keypair::from_bytes(&ec).unwrap()
-        }
+        })
     }
 
     #[cfg(feature = "quantum")]
-    pub fn from_bytes(b : &Vec<u8>) -> Self{
+    pub fn from_bytes(b : &Vec<u8>) -> Result<Self, QanError>{
         let mut glp : [u8;Q_PK_SIZE] = [0;Q_PK_SIZE];
         let mut ec  : [u8;EC_PK_SIZE]= [0;EC_PK_SIZE];
         
         glp.copy_from_slice(&b[0..Q_PK_SIZE]);
         ec.copy_from_slice(&b[(Q_PK_SIZE+DELIMITER.len())..]);
 
-        PetKey{
+        Ok(PetKey{
             glp : GlpSk::from_bytes(&glp.to_vec()),
             ec  : Keypair::from_bytes(&ec).unwrap()
-        }
+        })
     }
 
-    pub fn write_pem(&self){
+    pub fn write_pem(&self) -> Result<(), QanError>{
         let mut pemf = File::create(Path::new(PATHNAME)).unwrap();
         pemf.write_all(&self.to_bytes());
+        Ok(())
     }
 
-    pub fn from_pem(pathname : &str) -> Self{
+    pub fn from_pem(pathname : &str) -> Result<Self, QanError>{
         let mut pemf = File::open(Path::new(pathname)).unwrap();
         let mut buffer = Vec::new();
         pemf.read_to_end(&mut buffer);

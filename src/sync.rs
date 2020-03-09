@@ -17,12 +17,13 @@ use crate::event::{SyncType, Event};
 use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
+use crate::error::QanError;
 use rocksdb::DB;
 
 pub fn genesis_getter(
     genesis : &str, 
     keys    : &PetKey,
-    client  : &Client)-> Block{
+    client  : &Client)-> Result<Block, QanError>{
     #[cfg(feature = "quantum")]
     let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
     #[cfg(feature = "quantum")]
@@ -31,13 +32,13 @@ pub fn genesis_getter(
     let mut txdb = DB::open_default("tx.db").expect("cannot open txdb");
     #[cfg(not(feature = "quantum"))]
     let mut blockdb = DB::open_default("db.db").expect("cannot open blockdb");
-    match blockdb.get("block0"){
+    let head = match blockdb.get("block0"){
         Ok(Some(n)) => {
             println!("found zero block hash in db");
             match blockdb.get(&n){
                 Ok(Some(n)) => {
                     println!("found genesis block in db");
-                    serde_json::from_slice(&n).expect("couldn't deserialize genesis block i have")
+                    serde_json::from_slice(&n).map_err(|e|QanError::Serde(e))?
                 },
                 Ok(None)=>panic!("there is a block0 hash but no genesis block"),
                 Err(e)=>panic!(e)
@@ -49,31 +50,33 @@ pub fn genesis_getter(
                 let mut nemezis = File::open(Path::new("genesis")).expect("I have a genesis block but also have filesystem problems");
                 let mut nemezis_buffer = Vec::new();
                 nemezis.read_to_end(&mut nemezis_buffer);
-                serde_json::from_slice(&nemezis_buffer).expect("cannot deserialize genesis block")
+                serde_json::from_slice(&nemezis_buffer).map_err(|e|QanError::Serde(e))?
             }else{
-                match client.request("Synchronize", &serde_json::to_vec(&SyncType::GetNemezis).expect("cannot serialize genesis block request"), std::time::Duration::new(8,0)){
+                match client.request("Synchronize", &serde_json::to_vec(&SyncType::GetNemezis).map_err(|e|QanError::Serde(e))?, std::time::Duration::new(8,0)){
                     Ok(n)=>{
                         println!("found no genesis block, I'll ask the others");
-                        serde_json::from_slice(&n.payload).expect("cannot deserialize genesis block")
+                        serde_json::from_slice(&n.payload).map_err(|e|QanError::Serde(e))?
                     }Err(_) => {
                         println!("had to make a genesis block");
-                        let (b, t) = crate::nemezis::generate_nemezis_block(&keys);
-                        txdb.put(t.hash(), serde_json::to_vec(&t).unwrap());
+                        let (b, t) = crate::nemezis::generate_nemezis_block(&keys)?;
+                        let tx = serde_json::to_vec(&t).map_err(|e|QanError::Serde(e))?;
+                        txdb.put(t.hash()?, tx);
                         txdb.flush().unwrap();
                         b
                     }
                 }
             };
-            blockdb.put(head.hash(), &serde_json::to_vec(&head).expect("serialization of genesis failed")).expect("cannot place nemezis hash in db");
+            blockdb.put(head.hash(), &serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).expect("cannot place nemezis hash in db");
             blockdb.put("block0", head.hash()).expect("cannot put nemezis block in db");
             blockdb.flush().unwrap();
             head
         },
         Err(e) => panic!(e)
-    }
+    };
+    Ok(head)
 }
 
-pub fn sync(client : &Client, spv : u64) -> u64{
+pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
     #[cfg(feature = "quantum")]
     let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
     #[cfg(feature = "quantum")]
@@ -92,7 +95,7 @@ pub fn sync(client : &Client, spv : u64) -> u64{
         Err(e)=>panic!(e)
     };
 
-    let chain_height = match client.request("Synchronize", &serde_json::to_vec(&SyncType::GetHeight).expect("cannot serialize SyncType chain height request"), std::time::Duration::new(8,0)){
+    let chain_height = match client.request("Synchronize", &serde_json::to_vec(&SyncType::GetHeight).map_err(|e|QanError::Serde(e))?, std::time::Duration::new(8,0)){
         Ok(h)=>String::from_utf8_lossy(&h.payload).to_string().parse::<u64>().unwrap(),
         Err(_) => 0
     };
@@ -111,13 +114,13 @@ pub fn sync(client : &Client, spv : u64) -> u64{
             }
         }
     }
-    if block_height == 0 && chain_height == 0 { return 0 }
+    if block_height == 0 && chain_height == 0 { return Ok(0) }
     if chain_height >= 1 && block_height == 0 && spv == 0 { block_height = 1; }
     if chain_height > block_height {
         println!("start sync: {}", crate::util::timestamp());
         'blockloop:while block_height < chain_height{
             let block_hash = client.request("Synchronize", 
-                &serde_json::to_vec(&SyncType::AtHeight(block_height)).expect("couldn't serialize request for block hash at height") 
+                &serde_json::to_vec(&SyncType::AtHeight(block_height)).map_err(|e|QanError::Serde(e))?
                 ,std::time::Duration::new(8,0))
                     .expect(&format!("sync failed at getting blockheight: {}", block_height.to_string())).payload;
             match blockdb.get_pinned(&block_hash) {
@@ -125,13 +128,13 @@ pub fn sync(client : &Client, spv : u64) -> u64{
                 Ok(Some(_)) =>{ println!("During Sync I found a block I already have: {:?}", block_hash);}
                 Ok(None)    =>{
                     let req_block = match client.request("Synchronize", 
-                        &serde_json::to_vec(&SyncType::BlockAtHash(crate::util::vec_to_arr(&block_hash))).expect("couldn't serialize request for block at hash") 
+                        &serde_json::to_vec(&SyncType::BlockAtHash(crate::util::vec_to_arr(&block_hash))).map_err(|e|QanError::Serde(e))? 
                         ,std::time::Duration::new(8,0)){
                             Ok(r)=>r.payload,
                             Err(_)=>continue
                         };
                         // println!("got blockdata");
-                    let block : Block = serde_json::from_slice(&req_block).expect("couldn't deserialize block");
+                    let block : Block = serde_json::from_slice(&req_block).map_err(|e|QanError::Serde(e))?;
                     // println!("asking for pubkey : {:?}", &block.proposer_pub);
                     let pubkey = match pubkeys.get(&block.proposer_pub).expect("db error"){
                         Some(pk) => {
@@ -155,7 +158,7 @@ pub fn sync(client : &Client, spv : u64) -> u64{
                             pubkey
                         }
                     };
-                    if !block.verify(&pubkey) {
+                    if !block.verify(&pubkey)? {
                         panic!("found cryptographically invalid transaction in chain");
                     }
                     'txloop:for txh in &block.hashedblock.blockdata.txes{
@@ -164,7 +167,7 @@ pub fn sync(client : &Client, spv : u64) -> u64{
                             Ok(Some(_)) =>{ continue }
                             Ok(None)    =>{
                                 let req_tx = client.request("Synchronize", 
-                                    &serde_json::to_vec(&SyncType::TransactionAtHash(*txh)).expect("couldn't serialize transaction request") ,std::time::Duration::new(8,0))
+                                    &serde_json::to_vec(&SyncType::TransactionAtHash(*txh)).map_err(|e|QanError::Serde(e))? ,std::time::Duration::new(8,0))
                                         .expect(&format!("sync failed at getting txh: {:?}", &txh)).payload;
                                 match serde_json::from_slice::<Transaction>(&req_tx){
                                     Ok(tx) => {
@@ -190,7 +193,7 @@ pub fn sync(client : &Client, spv : u64) -> u64{
                                                 pubkey
                                             }
                                         };
-                                        if tx.verify(&pubkey){
+                                        if tx.verify(&pubkey)?{
                                             txdb.put(&txh, req_tx).expect("txdb failed");
                                         }else{
                                             panic!("found cryptographically invalid transaction in chain");
@@ -212,5 +215,5 @@ pub fn sync(client : &Client, spv : u64) -> u64{
         println!("end sync: {}", crate::util::timestamp());
         println!("{}",block_height);
     }
-    block_height
+    Ok(block_height)
 }

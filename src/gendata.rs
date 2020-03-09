@@ -15,12 +15,13 @@ use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
 use crate::sync::{sync, genesis_getter};
+use crate::error::QanError;
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpPk, gen_pk};
 use rocksdb::DB;
 
 #[cfg(feature = "quantum")]
-pub fn gen_data(){
+pub fn gen_data() -> Result<(), QanError>{
     let keys = crate::pk::PetKey::new();
     let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
     let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
@@ -34,8 +35,8 @@ pub fn gen_data(){
 
     blockdb.put("height", &block_height.to_string()).expect("couldn't store new chain height");
     blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).expect("couldn't store new block hash to its height");
-    blockdb.put(&head.hash(), serde_json::to_vec(&head).expect("156")).expect("failed to put received, verified and validated block in db");
-    txdb.put(tx.hash(), serde_json::to_vec(&tx).unwrap());
+    blockdb.put(&head.hash(), serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).expect("failed to put received, verified and validated block in db");
+    txdb.put(tx.hash(), serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?);
     println!("start at :{}", crate::util::timestamp());
     for i in 0..16{
         let mut tx_es = Vec::new();
@@ -48,12 +49,13 @@ pub fn gen_data(){
         head = Block::new(head.hash(), tx_es, &keys.glp, block_height);
         blockdb.put("height", block_height.to_string()).expect("couldn't store new chain height");
         blockdb.put("block".to_owned() + &block_height.to_string(), &head.hash()).expect("couldn't store new block hash to its height");
-        blockdb.put(&head.hash(), serde_json::to_vec(&head).expect("156")).expect("failed to put received, verified and validated block in db");
+        blockdb.put(&head.hash(), serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?).expect("failed to put received, verified and validated block in db");
         blockdb.flush().unwrap();
         txdb.flush().unwrap();
         println!("block {} done at:{}", i, crate::util::timestamp());
     }
     println!("done");
+    Ok(())
 }
 
 //128 block
