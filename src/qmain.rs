@@ -15,6 +15,7 @@ use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
 use crate::util::{blake2b, vec_to_arr};
 use crate::sync::{sync, genesis_getter};
+use crate::error::QanError;
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpPk, gen_pk};
 use rocksdb::DB;
@@ -26,7 +27,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     //     Ok(())
     // }
 
-    let config = crate::config::get_config();
+    let config = crate::config::Config::get_config()?;
     let opts = ClientOptions::builder()
         .cluster_uris(config.bootstrap)
         .connect_timeout(Duration::from_secs(10))
@@ -34,7 +35,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         .build().expect("building nats client failed");
 
     let keys = if std::path::Path::new(PATHNAME).exists(){
-        PetKey::from_pem(PATHNAME)
+        PetKey::from_pem(PATHNAME)?
     }else{
         let pk = PetKey::new();
         pk.write_pem();
@@ -45,18 +46,17 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut client = start_client(opts, &sndr);
     
-    let mut head : Block = genesis_getter("NEMEZIS", &keys, &client);
+    let mut head : Block = genesis_getter("qNEMEZIS", &keys, &client)?;
     let nemezis_hash = head.hash();
-    let mut block_height = sync(&client, config.spv);
+    let mut block_height = sync(&client, config.spv)?;
     println!("genezis hash: {:?}", nemezis_hash);
     let consensus_settings = ConsensusSettings::default();
 
     let mut txdb = DB::open_default("qtx.db").expect("cannot open txdb");
     let mut blockdb = DB::open_default("qdb.db").expect("cannot open blockdb");
-    let mut pubkeys = DB::open_default("qpubkeys.db").expect("cannot open pubkeydb");
-    let mut accounts = DB::open_default("qaccounts.db").expect("cannot open accountsdb");
+    let mut pubkeys = DB::open_default("qaccounts.db").expect("cannot open accountsdb");
+    let mut accounts = DB::open_default("qpubkeys.db").expect("cannot open pubkeydb");
     pubkeys.put(mypk_hash, &keys.get_glp_pk_bytes());
-    pubkeys.flush().unwrap();
     let mut mempool : HashMap<[u8;32], Transaction> = HashMap::new();
 
     let mut vm = Arc::new(RwLock::new(crate::vm::VM::new()));
@@ -76,10 +76,10 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         let ev = recv.recv().expect("internal channel failed on receive");
         match ev {
             Event::Block(bl)=>{
-                let b : Block = serde_json::from_slice(&bl).unwrap();
+                let b : Block = serde_json::from_slice(&bl).map_err(|e|QanError::Serde(e))?;
                 println!("my_head: {:?} \nincoming_head: {:?}", &head.hash(), b.hash());
                 let pubkey : GlpPk = if b.proposer_pub == mypk_hash { keys.get_glp_pk() }else{
-                    match pubkeys.get(&b.proposer_pub).expect("db error"){
+                     match pubkeys.get(&b.proposer_pub).expect("db error"){
                         Some(pk) => {
                             GlpPk::from_bytes(&pk)
                         }, None => {
@@ -87,14 +87,12 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                                 Ok(pk) => pk.payload,
                                 Err(_) => continue'main
                             };
-                            let pubkey = GlpPk::from_bytes(&pubkey_vec);
-                            pubkeys.put(&b.proposer_pub, pubkey_vec);
-                            pubkeys.flush().unwrap();
-                            pubkey
+                            pubkeys.put(&b.proposer_pub ,&pubkey_vec);
+                            GlpPk::from_bytes(&pubkey_vec)
                         }
                     }
                 };
-                if !b.verify(&pubkey) || b.hash() == head.hash() { continue'main }
+                if !b.verify(&pubkey)? || b.hash() == head.hash() { continue'main }
                 // if blockdb.get_pinned("block".to_owned()+&b.height.to_string()).expect("blockdb failed").is_some(){continue'main}
                 match blockdb.get_pinned(&b.hash()) {
                     Err(_)      =>{panic!("db failure")}
@@ -127,29 +125,27 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                                 if txdb.get_pinned(&k).expect("txdb failure").is_some(){continue'main}
                                 let req_tx = match client.request(
                                     "Synchronize", 
-                                    &serde_json::to_vec(&SyncType::TransactionAtHash(k.clone())).expect("couldn't serialize request for transaction"),
+                                    &serde_json::to_vec(&SyncType::TransactionAtHash(k.clone())).map_err(|e|QanError::Serde(e))?,
                                     std::time::Duration::new(4,0)){
                                         Ok(h)=>h.payload,
                                         Err(e)=>{ println!("{}",e); continue'main }
                                 };
-                                let tx : Transaction = serde_json::from_slice(&req_tx).unwrap();
+                                let tx : Transaction = serde_json::from_slice(&req_tx).map_err(|e|QanError::Serde(e))?;
                                 let pubkey = if b.proposer_pub == mypk_hash { keys.get_glp_pk() }else{
                                     match pubkeys.get(&b.proposer_pub).expect("db error"){
                                         Some(pk) => {
                                             GlpPk::from_bytes(&pk) 
                                         }, None => {
-                                            let pubkey_vec : Vec<u8> = match client.request("PubKey", &b.proposer_pub, std::time::Duration::new(4,0)){
+                                            let pubkey_vec : Vec<u8> = match client.request("PubKey", &b.proposer_pub, std::time::Duration::new(1,0)){
                                                 Ok(pk) => pk.payload,
                                                 Err(_) => continue'main
                                             };
-                                            let pubkey = GlpPk::from_bytes(&pubkey_vec);
                                             pubkeys.put(&b.proposer_pub ,&pubkey_vec);
-                                            pubkeys.flush().unwrap();
-                                            pubkey
+                                            GlpPk::from_bytes(&pubkey_vec)
                                         }
                                     }
                                 };
-                                if tx.verify(&pubkey){
+                                if tx.verify(&pubkey)?{
                                     mempool.insert(*k, tx);
                                 }else{
                                     panic!("tx invalid in chain");
@@ -160,7 +156,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         for k in b.hashedblock.blockdata.txes.iter(){
                             match mempool.remove(k){
                                 Some(x)=>{
-                                    txdb.put(k, serde_json::to_vec(&x).unwrap()).expect("txdb failed while making verifying db");
+                                    txdb.put(k, serde_json::to_vec(&x).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
                                 },
                                 None=>{
                                     panic!("memory pool didn't hold a transaction i already ask for and supposedly received");
@@ -182,26 +178,24 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
             },
             Event::Transaction(trax)=>{
                 //handle incoming transaction
-                let tx : Transaction = serde_json::from_slice(&trax).unwrap();
+                let tx : Transaction = serde_json::from_slice(&trax).map_err(|e|QanError::Serde(e))?;
                 let pubkey = if tx.pubkey == mypk_hash { keys.get_glp_pk() }else{
                      match pubkeys.get(&tx.pubkey).expect("db error"){
                         Some(pk) => {
-                            GlpPk::from_bytes(&pk)
+                            GlpPk::from_bytes(&pk) 
                         }, None => {
                             let pubkey_vec : Vec<u8> = match client.request("Pubkey", &tx.pubkey, std::time::Duration::new(4,0)){
                                 Ok(pk) => pk.payload,
                                 Err(_) => continue'main
                             };
-                            let pubkey = GlpPk::from_bytes(&pubkey_vec);
-                            pubkeys.put(&tx.pubkey ,pubkey_vec);
-                            pubkeys.flush().unwrap();
-                            pubkey
+                            pubkeys.put(&tx.pubkey ,&pubkey_vec);
+                            GlpPk::from_bytes(&pubkey_vec)
                         }
                     }
                 };
-                if tx.verify(&pubkey){
+                if tx.verify(&pubkey)?{
                     pool_size += tx.len();
-                    let txh = tx.hash();
+                    let txh = tx.hash()?;
                     let recipient = tx.transaction.recipient;
                     match mempool.insert(txh, tx){
                         Some(_)=>{continue'main},
@@ -226,14 +220,14 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     } ).collect();
                     txhashese.sort();
                     for k in &txhashese{
-                        // println!("{:?}", k);
+                        println!("{:?}", k);
                         mempool.remove(k).unwrap();
                     }
                     pool_size = 0;
                     block_height +=1;
-                    head = Block::new(head.hash(), txhashese, &keys.glp, block_height);
+                    head = Block::new(head.hash(), txhashese, &keys.glp, block_height)?;
                     let head_hash = head.hash();
-                    let serde_head = serde_json::to_vec(&head).expect("couldn't serialize block to hash while making it");
+                    let serde_head = serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?;
                     blockdb.put("height", block_height.to_string()).expect("couldn't store new height while making block");
                     blockdb.put("block".to_owned()+&block_height.to_string(), &head_hash).expect("couldn't store block hash to its height");
                     blockdb.put(&head_hash, &serde_head);
@@ -247,8 +241,8 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
             },
             Event::PublishTx(to, data, kp)=>{
                 //sender validity
-                let tx = Transaction::new(TxBody::new(to, data), &kp);
-                client.publish("tx.broadcast", &serde_json::to_vec(&tx).unwrap(), None);
+                let tx = Transaction::new(TxBody::new(to, data), &kp)?;
+                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None);
             },
 
             Event::GetHeight(sendr)=>{
@@ -256,15 +250,15 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
             },
             Event::GetTx(hash, sendr)=>{
                 sendr.send(match mempool.get(&hash){
-                    Some(t)=>serde_json::to_vec(t).unwrap(),
+                    Some(t)=>serde_json::to_vec(t).map_err(|e|QanError::Serde(e))?,
                     None=>continue
                 });
             }
             Event::Chat(s)=>{
                 //incoming chat
-                // println!("{:?}",s);
-                let tx = Transaction::new(TxBody::new([0;32], s), &keys.glp);
-                client.publish("tx.broadcast", &serde_json::to_vec(&tx).unwrap(), None);
+                println!("{:?}",s);
+                let tx = Transaction::new(TxBody::new([0;32], s), &keys.glp)?;
+                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None);
             },
             Event::PubKey(pubk, r)=>{
                 match r {
@@ -277,7 +271,6 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         let pkhash = blake2b(&pubk);
                         if pubkeys.get_pinned(&pkhash).expect("db error").is_none(){
                             pubkeys.put(pkhash ,pubk);
-                            pubkeys.flush().unwrap();
                             client.publish("pubkey", &keys.get_glp_pk_bytes(), None);
                         }
                     }
@@ -298,7 +291,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
             },
             Event::Synchronize(s, r)=>{
                 client.publish(&r, 
-                &match serde_json::from_slice(&s).expect("couldn't deserialize SyncType on received request"){
+                &match serde_json::from_slice(&s).map_err(|e|QanError::Serde(e))?{
                     SyncType::GetHeight => {
                         //chain height
                         // println!("GetHeight");
@@ -323,7 +316,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         //get transaction at hash
                         // println!("got asked tx hash {:?}", hash);
                         match mempool.get(&hash){
-                            Some(t) => serde_json::to_vec(&t).expect("couldn't serialize transaction when someone asked for it"),
+                            Some(t) => serde_json::to_vec(&t).map_err(|e|QanError::Serde(e))?,
                             None => match txdb.get(hash).expect("someone asked for a transaction i don't have in mempool or db"){
                                 Some(x)=> x,
                                 None => {println!("i don't have this tx");continue'main}

@@ -114,7 +114,7 @@ impl Block{
 
     #[cfg(feature = "quantum")]
     pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Result<Self, QanError> {
-        let hashedblock = HashedBlock::new(prev_hash, txes);
+        let hashedblock = HashedBlock::new(prev_hash, txes)?;
         let sig = sign(&sk, serde_json::to_vec(&hashedblock).map_err(|e|QanError::Serde(e))?).unwrap().to_bytes();
         let proposer_pub = blake2b(&gen_pk(&sk).to_bytes().to_vec());
         Ok(Block{

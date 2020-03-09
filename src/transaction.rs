@@ -82,14 +82,14 @@ impl Transaction{
 
     #[cfg(feature = "quantum")]
     pub fn new( transaction: TxBody, sk: &GlpSk ) -> Result<Self, QanError> {
-        let sig = sign(&sk, serde_json::to_vec(&transaction).unwrap()).map_err(|e|QanError::Serde(e))?;
-        Transaction { transaction , pubkey: blake2b(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() }
+        let sig = sign(&sk, serde_json::to_vec(&transaction).map_err(|e|QanError::Serde(e))?).unwrap();
+        Ok(Transaction { transaction , pubkey: blake2b(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() })
     }
 
     #[cfg(feature = "quantum")]
     pub fn verify(&self, pubkey : &GlpPk) -> Result<bool, QanError>{
         let qsig = GlpSig::from_bytes(&self.sig);
-        verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).map_err(|e|QanError::Serde(e))?)
+        Ok(verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).map_err(|e|QanError::Serde(e))?))
     }
 
     pub fn hash(&self) -> Result<[u8;32], QanError>{
