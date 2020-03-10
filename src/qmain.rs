@@ -22,12 +22,11 @@ use rocksdb::DB;
 
 #[cfg(feature = "quantum")]
 pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
-    println!("quantum_edition");
     // crate::gendata::gen_data();
     //     Ok(())
     // }
 
-    let config = crate::config::Config::get_config()?;
+    let (config, log_handle) = crate::config::Config::get_config()?;
     let opts = ClientOptions::builder()
         .cluster_uris(config.bootstrap)
         .connect_timeout(Duration::from_secs(10))
@@ -49,7 +48,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     let mut head : Block = genesis_getter("qNEMEZIS", &keys, &client)?;
     let nemezis_hash = head.hash();
     let mut block_height = sync(&client, config.spv)?;
-    println!("genezis hash: {:?}", nemezis_hash);
+    info!("genezis hash: {:?}", hex::encode(&nemezis_hash));
     let consensus_settings = ConsensusSettings::default();
 
     let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
@@ -77,7 +76,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         match ev {
             Event::Block(bl)=>{
                 let b : Block = serde_json::from_slice(&bl).map_err(|e|QanError::Serde(e))?;
-                println!("my_head: {:?} \nincoming_head: {:?}", &head.hash(), b.hash());
+                info!("my_head: {:?} \nincoming_head: {:?}", hex::encode(&head.hash()), hex::encode(b.hash()));
                 let pubkey : GlpPk = if b.proposer_pub == mypk_hash { keys.get_glp_pk() }else{
                      match pubkeys.get(&b.proposer_pub).map_err(|e|QanError::Database(e))?{
                         Some(pk) => {
@@ -103,7 +102,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                             blockdb.put("block".to_owned()+&block_height.to_string(), &head.hash()).map_err(|e|QanError::Database(e))?;
                             blockdb.put(head.hash(), bl).map_err(|e|QanError::Database(e))?;
                             blockdb.flush().map_err(|e|QanError::Database(e))?;
-                            println!("new head accepted: {:?}", &head.hash());
+                            info!("new head accepted: {:?}", hex::encode(&head.hash()));
                         }
                         continue'main
                     }
@@ -114,7 +113,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                             blockdb.put("block".to_owned()+&head.height.to_string(), head.hash()).map_err(|e|QanError::Database(e))?;
                             blockdb.put(head.hash(), bl).map_err(|e|QanError::Database(e))?;
                             blockdb.flush().map_err(|e|QanError::Database(e))?;
-                            println!("new head accepted: {:?}", &head.hash());
+                            info!("new head accepted: {:?}", hex::encode(&head.hash()));
                             continue'main
                         }
                         let tree = static_merkle_tree::Tree::from_hashes(b.hashedblock.blockdata.txes.clone(),merge);
@@ -128,7 +127,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                                     &serde_json::to_vec(&SyncType::TransactionAtHash(k.clone())).map_err(|e|QanError::Serde(e))?,
                                     std::time::Duration::new(4,0)){
                                         Ok(h)=>h.payload,
-                                        Err(e)=>{ println!("{}",e); continue'main }
+                                        Err(e)=>{ error!("{}",e); continue'main }
                                 };
                                 let tx : Transaction = serde_json::from_slice(&req_tx).map_err(|e|QanError::Serde(e))?;
                                 let pubkey = if b.proposer_pub == mypk_hash { keys.get_glp_pk() }else{
@@ -171,7 +170,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         blockdb.put(&head_hash, bl).map_err(|e|QanError::Database(e))?;
                         blockdb.flush().map_err(|e|QanError::Database(e))?;
                         txdb.flush().map_err(|e|QanError::Database(e))?;
-                        println!("at height {} is block {:?}", block_height, head_hash);
+                        info!("at height {} is block {:?}", block_height, hex::encode(head_hash));
                         pool_size = 0;
                     }
                 }
@@ -220,7 +219,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     } ).collect();
                     txhashese.sort();
                     for k in &txhashese{
-                        println!("{:?}", k);
+                        trace!("{}", hex::encode(k));
                         mempool.remove(k).unwrap();
                     }
                     pool_size = 0;
@@ -231,7 +230,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     blockdb.put("height", block_height.to_string()).map_err(|e|QanError::Database(e))?;
                     blockdb.put("block".to_owned()+&block_height.to_string(), &head_hash).map_err(|e|QanError::Database(e))?;
                     blockdb.put(&head_hash, &serde_head).map_err(|e|QanError::Database(e))?;
-                    println!("at height {} is block {:?}", block_height, head_hash);
+                    info!("at height {} is block {:?}", block_height, hex::encode(&head_hash));
                     client.publish("block.propose", &serde_head, None).map_err(|e|QanError::Nats(e))?;
                 }
             },
@@ -256,7 +255,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
             }
             Event::Chat(s)=>{
                 //incoming chat
-                println!("{:?}",s);
+                debug!("{:?}",s);
                 let tx = Transaction::new(TxBody::new([0;32], s), &keys.glp)?;
                 client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
             },
@@ -298,7 +297,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         block_height.to_string().as_bytes().to_vec()
                     },
                     SyncType::GetNemezis => {
-                        println!("someone asked for genesis");
+                        info!("someone asked for genesis");
                         match blockdb.get(&nemezis_hash).map_err(|e|QanError::Database(e))?{
                             Some(b)=> b,
                             None=> panic!("no genezis block?!")
@@ -309,7 +308,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                         // println!("got asked height {}", h);
                         match blockdb.get("block".to_string()+&h.to_string()).map_err(|e|QanError::Database(e))?{
                             Some(h)=>h,
-                            None=> {println!("i'm not this high: {}", h);continue'main}
+                            None=> {println!("i'm not this high : {}", h);continue'main}
                         }
                     },
                     SyncType::TransactionAtHash(hash) => {
@@ -319,20 +318,20 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                             Some(t) => serde_json::to_vec(&t).map_err(|e|QanError::Serde(e))?,
                             None => match txdb.get(hash).map_err(|e|QanError::Database(e))?{
                                 Some(x)=> x,
-                                None => {println!("i don't have this tx");continue'main}
+                                None => {println!("i don't have this tx: {}", hex::encode(&hash));continue'main}
                             }
                         }
                     },
                     SyncType::BlockAtHash(hash) => {
                         //get block at hash       
-                        println!("got asked block hash {:?}", &hash);  
+                        info!("got asked block hash {:?}", &hash);  
                         match blockdb.get(&hash).map_err(|e|QanError::Database(e))?{
                             Some(b) => {println!("i can reply"); b}, 
-                            None => {println!("someone asked for a block i don't have: {:?}", &hash); continue'main}
+                            None => {println!("someone asked for a block i don't have: {}", hex::encode(&hash)); continue'main}
                         }
                     },
 
-                    _ => { println!("wrong SyncMessage");continue'main }
+                    _ => { error!("wrong SyncMessage");continue'main }
                 }, 
                 None).map_err(|e|QanError::Nats(e))?;
             },

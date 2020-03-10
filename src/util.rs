@@ -2,6 +2,12 @@ use std::io::prelude::*;
 use std::fs::File;
 use std::time::{SystemTime, UNIX_EPOCH};
 use blake2::{Blake2b, /*Blake2s,*/ Digest as BDigest};
+use log::LevelFilter;
+use log4rs::append::console::ConsoleAppender;
+use log4rs::append::file::FileAppender;
+use log4rs::encode::pattern::PatternEncoder;
+use log4rs::config::{Appender, Config, Logger, Root};
+use log4rs::Handle;
 
 pub fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).expect("timestamp").as_millis() as u64
@@ -41,4 +47,29 @@ pub fn vec_to_arr(v : &Vec<u8>)->[u8;32]{
     let mut a : [u8;32] =[0;32];
     a.clone_from_slice(&v[0..32]);
     a
+}
+
+pub fn init_logging(level_conf : &str) -> log4rs::Handle{
+    let level = match level_conf.as_ref(){
+        "error" =>LevelFilter::Error,
+        "warn"  =>LevelFilter::Warn,
+        "info"  =>LevelFilter::Info,
+        "debug" =>LevelFilter::Debug,
+        "trace" =>LevelFilter::Trace,
+        _       =>  LevelFilter::Error,
+    };
+
+    let logname = "/tmp/qan/".to_owned()+&timestamp().to_string()+".log";
+    let logfile = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {m}{n}")))
+        .build(logname)
+        .unwrap();
+
+    let config = Config::builder()
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .logger(Logger::builder().appender("logfile").additive(true).build("logfile", level))
+        .build(Root::builder().appender("logfile").build(level))
+        .unwrap();
+
+    log4rs::init_config(config).unwrap()
 }

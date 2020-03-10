@@ -8,6 +8,7 @@ use crate::error::QanError;
 pub struct Config{
     pub spv         : u64,
     pub root        : String,
+    pub logging     : String,
     pub rpc_port    : u16,
     pub rpc_user    : String,
     pub rpc_pass    : String,
@@ -25,6 +26,7 @@ impl std::default::Default for Config{
             rpc_pass    : "pacal".into(),
             rpc_auth    : "Basic dW5leHBlY3RlZDpwYWNhbA==".into(),
             bootstrap   : vec!("127.0.0.1:4222".into()),
+            logging     : "".to_string(),
         }
     }
 }
@@ -37,7 +39,7 @@ impl Config{
         Ok(toml::to_string(&self).unwrap())
     }
 
-    pub fn get_config() -> Result<Self, QanError> {
+    pub fn get_config() -> Result<(Self, log4rs::Handle), QanError> {
         let mut config = if Path::new("./config.toml").exists(){
             let mut buf = String::new();
             File::open("./config.toml").map_err(|e|QanError::Io(e))?.read_to_string(&mut buf);
@@ -76,6 +78,11 @@ impl Config{
                 .takes_value(true)
                 .short("s")
                 .long("spv"),
+            Arg::with_name("logging")
+                .help("set logging level")
+                .takes_value(true)
+                .short("l")
+                .long("logging"),
         ]).get_matches();
 
     
@@ -94,10 +101,14 @@ impl Config{
         if let Some(r) = matches.value_of("root") { config.root = r.into() }
         if let Some(p) = matches.value_of("rpc-pwd") { config.rpc_port = p.parse::<u16>().expect("invalid port") }
         if let Some(s) = matches.value_of("spv") { config.spv =  s.parse::<u64>().expect("invalid sync depth") }
+        if let Some(l) = matches.value_of("logging") { config.logging = l.into() }
+
+        let log_handle = crate::util::init_logging(&config.logging);
+
         if !Path::new("./config.toml").exists(){
             File::create("./config.toml").map_err(|e|QanError::Io(e))?.write_fmt(format_args!("{}",config.to_string()?));
         }
-        Ok(config)
+        Ok((config, log_handle))
     }
 }
 

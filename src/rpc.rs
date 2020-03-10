@@ -69,10 +69,6 @@ pub fn start_rpc(
             let parsed : PublishTransaction = params.parse().expect("66: cant parse publishtransaction");
             let secret = match parsed.secret.get(0..2).expect("get"){
                 #[cfg(not(feature = "quantum"))]
-                "0x" => ed25519_dalek::Keypair::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).unwrap()).unwrap(),
-                #[cfg(feature = "quantum")]
-                "0x" => glp::glp::GlpSk::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).expect("decode")),
-                #[cfg(not(feature = "quantum"))]
                 _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().ec,
                 #[cfg(feature = "quantum")]
                 _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().glp,
