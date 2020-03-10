@@ -76,7 +76,7 @@ pub fn genesis_getter(
     Ok(head)
 }
 
-pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
+pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanError>{
     #[cfg(feature = "quantum")]
     let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
     #[cfg(feature = "quantum")]
@@ -111,9 +111,11 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
     }
     if block_height == 0 && chain_height == 0 { return Ok(0) }
     if chain_height >= 1 && block_height == 0 && spv == 0 { block_height = 1; }
+    let mut error_count = 0;
     if chain_height > block_height {
         info!("start sync: {}", crate::util::timestamp());
         'blockloop:while block_height < chain_height{
+            if error_count > 100 {return Err(QanError::Internal("sync error limit exceeded".to_string()))}
             let block_hash = client.request("Synchronize", 
                 &serde_json::to_vec(&SyncType::AtHeight(block_height)).map_err(|e|QanError::Serde(e))?
                 ,std::time::Duration::new(8,0)).map_err(|e|QanError::Nats(e))?.payload;
@@ -142,7 +144,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                             // println!("dont got pubkey for block");
                             let pubkey_vec : Vec<u8> = match client.request("PubKey", &block.proposer_pub, std::time::Duration::new(8,0)){
                                 Ok(pk) => pk.payload,
-                                Err(_) => continue'blockloop
+                                Err(_) => {error_count+=1;continue'blockloop}
                             };
                             #[cfg(feature = "quantum")]
                             let pubkey = GlpPk::from_bytes(&pubkey_vec);
@@ -154,6 +156,15 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                     };
                     if !block.verify(&pubkey)? {
                         panic!("found cryptographically invalid transaction in chain");
+                    }
+                    if block.height == block_height {
+                        if block.prev_hash() != head.hash() { 
+                            error!("{} ||| {}", hex::encode(block.prev_hash()), hex::encode(head.hash()));
+                            error_count+=1;
+                            continue'blockloop }
+                    }else {
+                        error!("{} ||| {}", block.height, block_height);
+                        error_count+=1;continue'blockloop
                     }
                     'txloop:for txh in &block.hashedblock.blockdata.txes{
                         match txdb.get_pinned(&txh) {
@@ -176,7 +187,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                                             }, None => {
                                                 let pubkey_vec : Vec<u8> = match client.request("PubKey", &tx.pubkey, std::time::Duration::new(8,0)){
                                                     Ok(pk) => pk.payload,
-                                                    Err(_) => continue'blockloop
+                                                    Err(_) => { error_count+=1;continue'blockloop }
                                                 };
                                                 // println!("didnt have pubkey but someone gave it to me");
                                                 #[cfg(feature = "quantum")]
@@ -199,6 +210,7 @@ pub fn sync(client : &Client, spv : u64) -> Result<u64, QanError>{
                     }
                     blockdb.put("block".to_owned()+&block_height.to_string(), block.hash()).map_err(|e|QanError::Database(e))?;
                     blockdb.put(&block_hash, req_block).map_err(|e|QanError::Database(e))?;
+                    *head = block;
                 }
             }
             block_height+=1;

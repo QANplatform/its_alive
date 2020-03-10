@@ -46,14 +46,14 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     
     let mut head : Block = genesis_getter("qNEMEZIS", &keys, &client)?;
     let nemezis_hash = head.hash();
-    let mut block_height = sync(&client, config.spv)?;
+    let mut block_height = sync(&client, config.spv, &mut head)?;
     info!("genezis hash: {:?}", hex::encode(&nemezis_hash));
     let consensus_settings = ConsensusSettings::default();
 
-    let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
-    let mut blockdb = DB::open_default("qdb.db").map_err(|e|QanError::Database(e))?;
-    let mut pubkeys = DB::open_default("qaccounts.db").map_err(|e|QanError::Database(e))?;
-    let mut accounts = DB::open_default("qpubkeys.db").map_err(|e|QanError::Database(e))?;
+    let mut txdb = DB::open_default("tx.db").map_err(|e|QanError::Database(e))?;
+    let mut blockdb = DB::open_default("db.db").map_err(|e|QanError::Database(e))?;
+    let mut pubkeys = DB::open_default("accounts.db").map_err(|e|QanError::Database(e))?;
+    let mut accounts = DB::open_default("pubkeys.db").map_err(|e|QanError::Database(e))?;
     pubkeys.put(mypk_hash, &keys.ec.public.to_bytes()).map_err(|e|QanError::Database(e))?;
     let mut mempool : HashMap<[u8;32], Transaction> = HashMap::new();
 
@@ -91,7 +91,13 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
                 if !b.verify(&pubkey)? || b.hash() == head.hash() { continue'main }
-                // if blockdb.get_pinned("block".to_owned()+&b.height.to_string()).expect("blockdb failed").is_some(){continue'main}
+                if b.height > block_height+1{
+                    block_height = sync(&client, config.spv, &mut head)?;
+                }else if b.height == block_height+1 {
+                    if b.prev_hash() != head.hash() { continue'main }
+                }else {
+                    continue'main
+                }
                 match blockdb.get_pinned(&b.hash()) {
                     Err(_)      =>{panic!("db failure")}
                     Ok(Some(_)) =>{

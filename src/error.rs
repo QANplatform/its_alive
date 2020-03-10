@@ -12,6 +12,7 @@ pub enum QanError{
     Serde(serde_json::Error),
     // Crypto(ed25519_dalek::SignatureError),
     Database(rocksdb::Error),
+    Internal(String)
 }
 
 impl std::fmt::Display for QanError {
@@ -24,6 +25,7 @@ impl std::fmt::Display for QanError {
             QanError::Serde(ref err) => write!(f, "Serde error: {}", err),
             // QanError::Crypto(ref err) => write!(f, "Crypto error: {}", err),
             QanError::Database(ref err) => write!(f, "Database error: {}", err),
+            QanError::Internal(ref err)  => write!(f, "Internal error: {}", err),
         }
     }
 }
@@ -38,6 +40,7 @@ impl std::error::Error for QanError {
             QanError::Serde(ref err) => Some(err),
             // QanError::Crypto(ref err) => Some(err),
             QanError::Database(ref err) => Some(err),
+            QanError::Internal(_) => None
         }
     }
 }

@@ -151,6 +151,10 @@ impl Block{
         self.hashedblock.blockdata.merkle_root.clone()
     }
 
+    pub fn prev_hash(&self) -> [u8;32]{
+        self.hashedblock.blockdata.prev_hash
+    }
+
     pub fn timestamp(&self)->u64{
         self.hashedblock.timestamp()
     }

@@ -25,7 +25,6 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     // crate::gendata::gen_data();
     //     Ok(())
     // }
-
     let (config, log_handle) = crate::config::Config::get_config()?;
     let opts = ClientOptions::builder()
         .cluster_uris(config.bootstrap)
@@ -47,7 +46,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     
     let mut head : Block = genesis_getter("qNEMEZIS", &keys, &client)?;
     let nemezis_hash = head.hash();
-    let mut block_height = sync(&client, config.spv)?;
+    let mut block_height = sync(&client, config.spv, &mut head)?;
     info!("genezis hash: {:?}", hex::encode(&nemezis_hash));
     let consensus_settings = ConsensusSettings::default();
 
@@ -92,7 +91,13 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
                 if !b.verify(&pubkey)? || b.hash() == head.hash() { continue'main }
-                // if blockdb.get_pinned("block".to_owned()+&b.height.to_string()).expect("blockdb failed").is_some(){continue'main}
+                if b.height > block_height+1{
+                    block_height = sync(&client, config.spv, &mut head)?;
+                }else if b.height == block_height+1 {
+                    if b.prev_hash() != head.hash() { continue'main }
+                }else {
+                    continue'main
+                }
                 match blockdb.get_pinned(&b.hash()) {
                     Err(_)      =>{panic!("db failure")}
                     Ok(Some(_)) =>{
@@ -224,7 +229,9 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     pool_size = 0;
                     block_height +=1;
-                    head = Block::new(head.hash(), txhashese, &keys.glp, block_height)?;
+                    let new = Block::new(head.hash(), txhashese, &keys.glp, block_height)?;
+                    debug!("{} chains on top of {}",hex::encode(&new.hash()),hex::encode(&head.hash()));
+                    head = new;
                     let head_hash = head.hash();
                     let serde_head = serde_json::to_vec(&head).map_err(|e|QanError::Serde(e))?;
                     blockdb.put("height", block_height.to_string()).map_err(|e|QanError::Database(e))?;
