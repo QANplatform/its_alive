@@ -14,7 +14,7 @@ use ed25519_dalek::PublicKey;
 use crate::event::{SyncType, Event};
 use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
-use crate::util::{blake2b, vec_to_arr};
+use crate::util::{do_hash, vec_to_arr};
 use crate::sync::{sync, genesis_getter};
 use crate::error::QanError;
 use rocksdb::DB;
@@ -39,7 +39,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
         pk.write_pem();
         pk
     };
-    let mypk_hash = blake2b(&keys.ec.public.to_bytes().to_vec());
+    let mypk_hash = do_hash(&keys.ec.public.to_bytes().to_vec());
     let (sndr, recv) = std::sync::mpsc::sync_channel(777);
 
     let mut client = start_client(opts, &sndr)?;
@@ -52,8 +52,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut txdb = DB::open_default("tx.db").map_err(|e|QanError::Database(e))?;
     let mut blockdb = DB::open_default("db.db").map_err(|e|QanError::Database(e))?;
-    let mut pubkeys = DB::open_default("accounts.db").map_err(|e|QanError::Database(e))?;
-    let mut accounts = DB::open_default("pubkeys.db").map_err(|e|QanError::Database(e))?;
+    let mut accounts = DB::open_default("accounts.db").map_err(|e|QanError::Database(e))?;
+    let mut pubkeys = DB::open_default("pubkeys.db").map_err(|e|QanError::Database(e))?;
     pubkeys.put(mypk_hash, &keys.ec.public.to_bytes()).map_err(|e|QanError::Database(e))?;
     let mut mempool : HashMap<[u8;32], Transaction> = HashMap::new();
 
@@ -272,7 +272,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                             None => continue'main
                         };
                     },None=>{
-                        let pkhash = blake2b(&pubk);
+                        let pkhash = do_hash(&pubk);
                         if pubkeys.get_pinned(&pkhash).map_err(|e|QanError::Database(e))?.is_none(){
                             pubkeys.put(pkhash ,pubk).map_err(|e|QanError::Database(e))?;
                             client.publish("pubkey", &keys.ec.public.to_bytes(), None).map_err(|e|QanError::Nats(e))?;

@@ -13,7 +13,7 @@ use crate::pk::{PATHNAME, PetKey};
 use crate::event::{SyncType, Event};
 use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
-use crate::util::{blake2b, vec_to_arr};
+use crate::util::{do_hash, vec_to_arr};
 use crate::sync::{sync, genesis_getter};
 use crate::error::QanError;
 #[cfg(feature = "quantum")]
@@ -23,8 +23,7 @@ use rocksdb::DB;
 #[cfg(feature = "quantum")]
 pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     // crate::gendata::gen_data();
-    //     Ok(())
-    // }
+
     let (config, log_handle) = crate::config::Config::get_config()?;
     let opts = ClientOptions::builder()
         .cluster_uris(config.bootstrap)
@@ -39,7 +38,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
         pk.write_pem();
         pk
     };
-    let mypk_hash = blake2b(&keys.get_glp_pk_bytes());
+    let mypk_hash = do_hash(&keys.get_glp_pk_bytes());
     let (sndr, recv) = std::sync::mpsc::sync_channel(777);
 
     let mut client = start_client(opts, &sndr)?;
@@ -52,8 +51,8 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;
     let mut blockdb = DB::open_default("qdb.db").map_err(|e|QanError::Database(e))?;
-    let mut pubkeys = DB::open_default("qaccounts.db").map_err(|e|QanError::Database(e))?;
-    let mut accounts = DB::open_default("qpubkeys.db").map_err(|e|QanError::Database(e))?;
+    let mut accounts = DB::open_default("qaccounts.db").map_err(|e|QanError::Database(e))?;
+    let mut pubkeys = DB::open_default("qpubkeys.db").map_err(|e|QanError::Database(e))?;
     pubkeys.put(mypk_hash, &keys.get_glp_pk_bytes()).map_err(|e|QanError::Database(e))?;
     let mut mempool : HashMap<[u8;32], Transaction> = HashMap::new();
 
@@ -274,7 +273,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                             None => continue'main
                         };
                     },None=>{
-                        let pkhash = blake2b(&pubk);
+                        let pkhash = do_hash(&pubk);
                         if pubkeys.get_pinned(&pkhash).map_err(|e|QanError::Database(e))?.is_none(){
                             pubkeys.put(pkhash ,pubk).map_err(|e|QanError::Database(e))?;
                             client.publish("pubkey", &keys.get_glp_pk_bytes(), None).map_err(|e|QanError::Nats(e))?;
@@ -331,9 +330,9 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     SyncType::BlockAtHash(hash) => {
                         //get block at hash       
-                        info!("got asked block hash {:?}", &hash);  
+                        info!("got asked block hash {:?}", hex::encode(&hash));  
                         match blockdb.get(&hash).map_err(|e|QanError::Database(e))?{
-                            Some(b) => {println!("i can reply"); b}, 
+                            Some(b) => b, 
                             None => {println!("someone asked for a block i don't have: {}", hex::encode(&hash)); continue'main}
                         }
                     },

@@ -16,7 +16,7 @@ use ed25519_dalek::PublicKey;
 use crate::event::{SyncType, Event};
 use crate::block::{Block, merge};
 use crate::conset::ConsensusSettings;
-use crate::util::{blake2b, vec_to_arr};
+use crate::util::{do_hash, vec_to_arr};
 use crate::error::QanError;
 use rocksdb::DB;
 
@@ -113,9 +113,9 @@ pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanEr
     if chain_height >= 1 && block_height == 0 && spv == 0 { block_height = 1; }
     let mut error_count = 0;
     if chain_height > block_height {
-        info!("start sync: {}", crate::util::timestamp());
+        println!("start sync: {}", crate::util::timestamp());
         'blockloop:while block_height < chain_height{
-            if error_count > 100 {return Err(QanError::Internal("sync error limit exceeded".to_string()))}
+            if error_count > 10 {return Err(QanError::Internal("sync error limit exceeded".to_string()))}
             let block_hash = client.request("Synchronize", 
                 &serde_json::to_vec(&SyncType::AtHeight(block_height)).map_err(|e|QanError::Serde(e))?
                 ,std::time::Duration::new(8,0)).map_err(|e|QanError::Nats(e))?.payload;
@@ -125,7 +125,7 @@ pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanEr
                 Ok(None)    =>{
                     let req_block = match client.request("Synchronize", 
                         &serde_json::to_vec(&SyncType::BlockAtHash(crate::util::vec_to_arr(&block_hash))).map_err(|e|QanError::Serde(e))? 
-                        ,std::time::Duration::new(8,0)){
+                        ,std::time::Duration::new(16,0)){
                             Ok(r)=>r.payload,
                             Err(_)=>continue
                         };
@@ -144,7 +144,7 @@ pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanEr
                             // println!("dont got pubkey for block");
                             let pubkey_vec : Vec<u8> = match client.request("PubKey", &block.proposer_pub, std::time::Duration::new(8,0)){
                                 Ok(pk) => pk.payload,
-                                Err(_) => {error_count+=1;continue'blockloop}
+                                Err(_) => {error_count+=1;println!("blockpubkey");continue'blockloop}
                             };
                             #[cfg(feature = "quantum")]
                             let pubkey = GlpPk::from_bytes(&pubkey_vec);
@@ -159,8 +159,8 @@ pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanEr
                     }
                     if block.height == block_height {
                         if block.prev_hash() != head.hash() { 
-                            error!("{} ||| {}", hex::encode(block.prev_hash()), hex::encode(head.hash()));
-                            error_count+=1;
+                            println!("{} ||| {}", hex::encode(block.prev_hash()), hex::encode(head.hash()));
+                            error_count+=1;println!("{} ||| {}",block.height , block_height);
                             continue'blockloop }
                     }else {
                         error!("{} ||| {}", block.height, block_height);
@@ -187,7 +187,7 @@ pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanEr
                                             }, None => {
                                                 let pubkey_vec : Vec<u8> = match client.request("PubKey", &tx.pubkey, std::time::Duration::new(8,0)){
                                                     Ok(pk) => pk.payload,
-                                                    Err(_) => { error_count+=1;continue'blockloop }
+                                                    Err(_) => { error_count+=1;println!("txpubkey");continue'blockloop }
                                                 };
                                                 // println!("didnt have pubkey but someone gave it to me");
                                                 #[cfg(feature = "quantum")]
@@ -218,7 +218,7 @@ pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanEr
             txdb.flush().map_err(|e|QanError::Database(e))?;
             blockdb.flush().map_err(|e|QanError::Database(e))?;
         }
-        info!("end sync: {}", crate::util::timestamp());
+        println!("end sync: {}", crate::util::timestamp());
         info!("{}",block_height);
     }
     Ok(block_height)

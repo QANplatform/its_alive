@@ -3,6 +3,8 @@ name = "poa_demo"
 version = "0.4.1"
 authors = ["Deusz <deusz@centrumcircle.com>"]
 edition = "2018"
+build = "build.rs"
+links = "hash"
 
 [features]
 quantum = ["glp"]

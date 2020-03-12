@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use rmps::{Serializer, Deserializer};
 use crate::error::QanError;
-use crate::util::blake2b;
+use crate::util::do_hash;
 #[cfg(not(feature = "quantum"))]
 use ed25519_dalek::{Keypair, PublicKey, Signature};
 #[cfg(feature = "quantum")]
@@ -13,7 +13,7 @@ pub fn merge(l:&[u8;32],r:&[u8;32])->[u8;32]{
     let mut buf = Vec::new();
     buf.extend_from_slice(l);
     buf.extend_from_slice(r);
-    blake2b(&buf) 
+    do_hash(&buf) 
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
@@ -69,7 +69,7 @@ impl fmt::Display for HashedBlock {
 impl HashedBlock {
     pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Result<Self, QanError> {
         let blockdata = BlockData::new(prev_hash, txes)?;
-        let hash = blake2b(&serde_json::to_vec(&blockdata).map_err(|e|QanError::Serde(e))?);
+        let hash = do_hash(&serde_json::to_vec(&blockdata).map_err(|e|QanError::Serde(e))?);
         Ok(HashedBlock{
             blockdata,
             hash 
@@ -103,7 +103,7 @@ impl Block{
     pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, kp: &Keypair, height : u64) -> Result<Self, QanError> {
         let hashedblock = HashedBlock::new(prev_hash, txes)?;
         let sig = kp.sign(&serde_json::to_vec(&hashedblock).map_err(|e|QanError::Serde(e))?).to_bytes().to_vec();
-        let proposer_pub = blake2b(&kp.public.to_bytes().to_vec());
+        let proposer_pub = do_hash(&kp.public.to_bytes().to_vec());
         Ok(Block{
             proposer_pub,
             hashedblock, 
@@ -116,7 +116,7 @@ impl Block{
     pub fn new(prev_hash: [u8;32], txes: Vec<[u8;32]>, sk: &GlpSk, height : u64) -> Result<Self, QanError> {
         let hashedblock = HashedBlock::new(prev_hash, txes)?;
         let sig = sign(&sk, serde_json::to_vec(&hashedblock).map_err(|e|QanError::Serde(e))?).unwrap().to_bytes();
-        let proposer_pub = blake2b(&gen_pk(&sk).to_bytes().to_vec());
+        let proposer_pub = do_hash(&gen_pk(&sk).to_bytes().to_vec());
         Ok(Block{
             proposer_pub,
             hashedblock, 

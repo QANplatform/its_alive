@@ -4,7 +4,7 @@ use std::fmt;
 use ed25519_dalek::{Keypair, PublicKey, Signature};
 use rand::RngCore;
 use rand::rngs::OsRng;
-use crate::util::blake2b;
+use crate::util::do_hash;
 use crate::error::QanError;
 use hex::encode;
 #[cfg(feature = "quantum")]
@@ -37,7 +37,7 @@ impl TxBody{
     }
 
     pub fn hash(&self) -> Result<[u8;32],QanError>{
-        Ok(blake2b(&serde_json::to_vec(&self).map_err(|e|QanError::Serde(e))?))
+        Ok(do_hash(&serde_json::to_vec(&self).map_err(|e|QanError::Serde(e))?))
     }
 
     pub fn len(&self) -> usize{
@@ -68,7 +68,7 @@ impl Transaction{
     #[cfg(not(feature = "quantum"))]
     pub fn new( transaction: TxBody, kp: &Keypair ) -> Result<Self, QanError> {
         let sig = kp.sign(&serde_json::to_vec(&transaction).map_err(|e|QanError::Serde(e))?);
-        Ok(Transaction { transaction , pubkey: blake2b(&kp.public.to_bytes().to_vec()), sig: sig.to_bytes().to_vec() })
+        Ok(Transaction { transaction , pubkey: do_hash(&kp.public.to_bytes().to_vec()), sig: sig.to_bytes().to_vec() })
     }
 
     #[cfg(not(feature = "quantum"))]
@@ -83,7 +83,7 @@ impl Transaction{
     #[cfg(feature = "quantum")]
     pub fn new( transaction: TxBody, sk: &GlpSk ) -> Result<Self, QanError> {
         let sig = sign(&sk, serde_json::to_vec(&transaction).map_err(|e|QanError::Serde(e))?).unwrap();
-        Ok(Transaction { transaction , pubkey: blake2b(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() })
+        Ok(Transaction { transaction , pubkey: do_hash(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() })
     }
 
     #[cfg(feature = "quantum")]
@@ -93,7 +93,7 @@ impl Transaction{
     }
 
     pub fn hash(&self) -> Result<[u8;32], QanError>{
-        Ok(blake2b(&serde_json::to_vec(&self).map_err(|e|QanError::Serde(e))?))
+        Ok(do_hash(&serde_json::to_vec(&self).map_err(|e|QanError::Serde(e))?))
     }
 
     pub fn len(&self) -> usize{

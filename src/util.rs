@@ -32,6 +32,22 @@ pub fn hex_arr_to_dec_arr(){
     println!("{:?}", ret);
 }
 
+pub fn do_hash(input: &Vec<u8>) -> [u8;32]{
+    #[cfg(feature = "quantum")]
+    let ret = swift_hash(input);
+    #[cfg(not(feature = "quantum"))]
+    let ret =  blake2b(input);
+    ret
+}
+
+pub fn swift_hash(input: &Vec<u8>) -> [u8;32]{
+    let mut ret = [0u8;32];
+    unsafe{
+        crate::hash::SWIFFTX(256, input.as_ptr(), input.len(), ret.as_mut_ptr());
+    }
+    ret
+}
+
 pub fn blake2b(b: &Vec<u8>) ->  [u8;32] {
     let mut hasher = Blake2b::new();
     hasher.input(b);
