@@ -52,8 +52,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut txdb = DB::open_default("tx.db").expect("cannot open txdb");
     let mut blockdb = DB::open_default("db.db").expect("cannot open blockdb");
-    let mut pubkeys = DB::open_default("accounts.db").expect("cannot open accountsdb");
-    let mut accounts = DB::open_default("pubkeys.db").expect("cannot open pubkeydb");
+    let mut pubkeys = DB::open_default("pubkeys.db").expect("cannot open accountsdb");
+    let mut accounts = DB::open_default("accounts.db").expect("cannot open pubkeydb");
     pubkeys.put(mypk_hash, &keys.ec.public.to_bytes());
     let mut mempool : HashMap<[u8;32], Transaction> = HashMap::new();
 
