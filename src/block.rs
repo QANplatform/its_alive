@@ -16,7 +16,7 @@ pub fn merge(l:&[u8;32],r:&[u8;32])->[u8;32]{
     do_hash(&buf) 
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
+#[derive(Debug, Deserialize, Serialize,  Clone)]
 pub struct BlockData {
     pub timestamp   : u64,
     pub merkle_root : Vec<u8>,
@@ -53,7 +53,7 @@ impl BlockData {
 
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct HashedBlock {
     pub blockdata   : BlockData,
     pub hash        : [u8;32],
@@ -82,7 +82,7 @@ impl HashedBlock {
 
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Block {
     pub hashedblock : HashedBlock,
     pub proposer_pub: [u8;32],

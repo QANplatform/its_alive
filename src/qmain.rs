@@ -60,7 +60,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     let mut pool_size : usize = 0;
 
     client.publish("PubKey", &keys.get_glp_pk_bytes(), None).map_err(|e|QanError::Nats(e))?;
-    start_stdin_handler(&sndr);
+    // start_stdin_handler(&sndr);
     start_sync_sub(&sndr, &client);
 
     let mut txdb = Arc::new(txdb);
@@ -241,14 +241,12 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             Event::RawTransaction(tx)=>{
-                //check transaction validity
                 client.publish("tx.broadcast", &tx, None).map_err(|e|QanError::Nats(e))?;
             },
-            Event::PublishTx(to, data, kp)=>{
-                //sender validity
-                let tx = Transaction::new(TxBody::new(to, data), &kp)?;
-                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
-            },
+            // Event::PublishTx(to, data, kp)=>{
+            //     let tx = Transaction::new(TxBody::new(to, 0, data), &kp)?;
+            //     client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
+            // },
 
             Event::GetHeight(sendr)=>{
                 sendr.send(block_height).expect("couldn't send height to rpc");
@@ -259,12 +257,6 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
                     None=>continue
                 });
             }
-            Event::Chat(s)=>{
-                //incoming chat
-                debug!("{:?}",s);
-                let tx = Transaction::new(TxBody::new([0;32], s), &keys.glp)?;
-                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
-            },
             Event::PubKey(pubk, r)=>{
                 match r {
                     Some(to)=>{

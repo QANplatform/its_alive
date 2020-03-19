@@ -26,12 +26,6 @@ pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Eve
         Ok(())
     }).map_err(|e|QanError::Nats(e))?;
 
-    let chsndr = sndr.clone();
-    client.subscribe("chat", move |msg| {
-        chsndr.send(Event::Chat(msg.payload.to_owned()));
-        Ok(())
-    }).map_err(|e|QanError::Nats(e))?;
-
     let pksndr = sndr.clone();
     client.subscribe("PubKey", move |msg| {
         pksndr.send(Event::PubKey(msg.payload.to_owned(), msg.reply_to.clone()));
@@ -58,7 +52,7 @@ pub fn start_stdin_handler(tsndr : &std::sync::mpsc::SyncSender<Event>){
         loop{
             let mut buffer = String::new();
             handle.read_line(&mut buffer);
-            tsndr.send(Event::Chat(buffer.as_bytes().to_vec()));
+            // tsndr.send(Event::Chat(buffer.as_bytes().to_vec()));
         }
     });
 }

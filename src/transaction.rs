@@ -9,30 +9,48 @@ use crate::error::QanError;
 use hex::encode;
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpSig, GlpSk, GlpPk, sign, verify, gen_pk};
+use jsonrpc_http_server::jsonrpc_core::Value;
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VmCall{
+    pub prev_root: [u8; 32],
+    pub res_root : [u8; 32],
+    pub sc_hash  : [u8; 32],
+    pub func     : String,
+    pub params   : Vec<Value>,
+}
+
+impl VmCall{
+    pub fn len(&self) -> usize{
+        96+self.func.len()+(self.params.len()*64)
+    }
+}
 
 //TxBody is the main data of the transactions
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TxBody{
 	pub nonce: u64,             //size: 8     byte
 	pub timestamp: u64,         //size: 8     byte
     pub recipient: [u8; 32],    //size: 32    byte
-    pub data: Vec<u8>,          //size: x   byte
+    pub balance  : u64,         //size: 8     byte
+    pub data: Option<VmCall>,
 }
 
 impl fmt::Display for TxBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"nonce\":{},\n\"timestamp\":{},\n\"recipient\":{},\n\"data\":{:?}",
-        self.nonce, self.timestamp, encode(self.recipient), self.data)
+        write!(f, "\"nonce\":{},\n\"timestamp\":{},\n\"recipient\":{},\n\"balance\":{}\n\"data\":{:?}",
+        self.nonce, self.timestamp, encode(self.recipient), self.balance, self.data)
     }
 }
 
 impl TxBody{
-    pub fn new(recipient: [u8; 32], data: Vec<u8>) -> TxBody {
+    pub fn new(recipient: [u8; 32], balance: u64, data: Option<VmCall>) -> TxBody {
         TxBody {
             nonce: OsRng.next_u64(),  
             timestamp: crate::util::timestamp(),
-            recipient: recipient,
-            data: data,
+            recipient,
+            balance,
+            data,
         }
     }
 
@@ -41,18 +59,18 @@ impl TxBody{
     }
 
     pub fn len(&self) -> usize{
-        48+self.data.len()
+        56 + match &self.data{
+            Some(x)=> x.len(),
+            None=>0
+        }
     }
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Transaction {
     pub transaction : TxBody,
-    #[cfg(not(feature = "quantum"))]
-    pub pubkey      : [u8;32],
-    #[cfg(feature = "quantum")]
     pub pubkey      : [u8; 32],
-    pub sig         : Vec<u8> 
+    pub sig         : Vec<u8>,
 }
 
 
@@ -90,6 +108,10 @@ impl Transaction{
     pub fn verify(&self, pubkey : &GlpPk) -> Result<bool, QanError>{
         let qsig = GlpSig::from_bytes(&self.sig);
         Ok(verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).map_err(|e|QanError::Serde(e))?))
+    }
+
+    pub fn get_sc_call(&self) -> Option<VmCall>{
+        self.transaction.data.clone()
     }
 
     pub fn hash(&self) -> Result<[u8;32], QanError>{

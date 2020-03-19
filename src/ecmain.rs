@@ -56,12 +56,12 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
     let mut pubkeys = DB::open_default("pubkeys.db").map_err(|e|QanError::Database(e))?;
     pubkeys.put(mypk_hash, &keys.ec.public.to_bytes()).map_err(|e|QanError::Database(e))?;
     let mut mempool : HashMap<[u8;32], Transaction> = HashMap::new();
-
+    let mut roots : HashMap<[u8;32], [u8;32]> = HashMap::new();
     let mut vm = Arc::new(RwLock::new(crate::vm::VM::new()));
     let mut pool_size : usize = 0;
 
     client.publish("PubKey", &keys.ec.public.to_bytes(), None).map_err(|e|QanError::Nats(e))?;
-    start_stdin_handler(&sndr);
+    // start_stdin_handler(&sndr);
     start_sync_sub(&sndr, &client);
 
     let mut txdb = Arc::new(txdb);
@@ -214,6 +214,18 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                                 Ok(None)=>{accounts.put(recipient,1.to_string()).map_err(|e|QanError::Database(e))?;},
                                 Err(_)=>{panic!("account db error")}
                             }
+                            // if tx.transaction.data.is_some(){
+                            //     let dat = tx.get_sc_call().unwrap();
+                            //     match roots.get(&dat.sc_hash){
+                            //         Some(x) => if x == dat.prev_hash{
+                            //             let params = crate::vm::parse_values(dat.params);
+                            //             let ret = vm.read().unwrap().call_fun(&dat.sc_hash, &dat.func, params);
+                            //             if dat.res_root == ret{
+                            //                 roots.insert(&dat.sc_hash, ret);
+                            //             }
+                            //         }
+                            //     };
+                            // }
                         }
                     }     
                 }
@@ -240,14 +252,12 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             Event::RawTransaction(tx)=>{
-                //check transaction validity
                 client.publish("tx.broadcast", &tx, None).map_err(|e|QanError::Nats(e))?;
             },
-            Event::PublishTx(to, data, kp)=>{
-                //sender validity
-                let tx = Transaction::new(TxBody::new(to, data), &kp)?;
-                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
-            },
+            // Event::PublishTx(to, data, kp)=>{
+            //     let tx = Transaction::new(TxBody::new(to, 0, data), &kp)?;
+            //     client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
+            // },
 
             Event::GetHeight(sendr)=>{
                 sendr.send(block_height).expect("couldn't send height to rpc");
@@ -258,12 +268,6 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     None=>continue
                 });
             }
-            Event::Chat(s)=>{
-                //incoming chat
-                debug!("{:?}",s);
-                let tx = Transaction::new(TxBody::new([0;32], s), &keys.ec)?;
-                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
-            },
             Event::PubKey(pubk, r)=>{
                 match r {
                     Some(to)=>{
@@ -286,6 +290,8 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     match vm.try_write(){
                         Ok(mut v)=>{
                             let ret = v.build_from_file("./contracts/".to_owned()+&file_name);
+                            let wtvr = do_hash(&ret.as_bytes().to_vec());
+                            roots.insert(wtvr, wtvr);
                             main_send.send(ret).expect("couldn't return new smart contract hash to rpc");
                             break
                         }

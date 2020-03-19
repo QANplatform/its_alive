@@ -54,6 +54,30 @@ pub enum VMReturn{
 	F64(f64),
 }
 
+pub fn parse_values(inc : Vec<Value>)->Vec<RuntimeValue>{
+	let mut ret = Vec::new();
+	for v in inc{
+		match v {
+			Value::Number(n)=>{
+				if n.is_u64(){
+					ret.push(RuntimeValue::I64(n.as_u64().unwrap().try_into().unwrap()));
+					continue
+				}
+				if n.is_i64(){
+					ret.push(RuntimeValue::I64(n.as_i64().unwrap()));
+					continue
+				}
+				// if n.is_f64(){
+				// 	ret.push(RuntimeValue::F64(n.as_f64().unwrap()));
+				// 	continue
+				// }
+			},
+			_=>{},
+		}
+	}
+	ret
+}
+
 impl VMReturn {
 	pub fn ser(&self)->Vec<u8>{
 		let mut buf = Vec::new();

@@ -26,12 +26,13 @@ struct RawTransaction {
     tx: Vec<u8>
 	// tx: crate::transaction::Transaction,
 }
-#[derive(Deserialize)]
-struct PublishTransaction {
-	to:     [u8;32],
-    data:   Vec<u8>,
-    secret: String,
-}
+
+// #[derive(Deserialize)]
+// struct PublishTransaction {
+// 	to:     [u8;32],
+//     data:   Option<crate::transaction::VmCall>,
+//     secret: String,
+// }
 
 #[derive(Default, Clone)]
 struct Meta {
@@ -64,20 +65,20 @@ pub fn start_rpc(
     std::thread::spawn(move||{ 
         let mut io = MetaIoHandler::default();
         let txpub_sender = sendr.clone();
-        io.add_method_with_meta("publish_transaction", move |params: Params, meta: Meta| {
-            if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : PublishTransaction = params.parse().expect("66: cant parse publishtransaction");
-            let secret = match parsed.secret.get(0..2).expect("get"){
-                #[cfg(not(feature = "quantum"))]
-                _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().ec,
-                #[cfg(feature = "quantum")]
-                _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().glp,
-            };
-            match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data, secret)){
-                Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
-                Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
-            }
-        });
+        // io.add_method_with_meta("publish_transaction", move |params: Params, meta: Meta| {
+        //     if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
+        //     let parsed : PublishTransaction = params.parse().expect("66: cant parse publishtransaction");
+        //     let secret = match parsed.secret.get(0..2).expect("get"){
+        //         #[cfg(not(feature = "quantum"))]
+        //         _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().ec,
+        //         #[cfg(feature = "quantum")]
+        //         _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().glp,
+        //     };
+        //     match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data, secret)){
+        //         Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
+        //         Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
+        //     }
+        // });
 
         let rawtxpub_sender= sendr.clone();
         io.add_method_with_meta("publish_raw_transaction", move |params: Params, meta: Meta| {
