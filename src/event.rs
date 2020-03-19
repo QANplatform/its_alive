@@ -5,7 +5,7 @@ use crate::{
     block::Block,
 };
 
-///Enum for internal data direfentiation during internal transmissions.
+///Enum for internal data diferentiation during internal transmissions.
 pub enum Event {
     Transaction(Vec<u8>),
     #[cfg(not(feature = "quantum"))]
