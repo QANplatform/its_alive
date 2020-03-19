@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use clap::{App, Arg};
 use crate::error::QanError;
 
+/// Struct responsible for the on start defineable parameters.
 #[derive(Serialize,Deserialize)]
 pub struct Config{
     pub spv         : u64,
@@ -30,6 +31,7 @@ impl std::default::Default for Config{
         }
     }
 }
+
 impl Config{
     pub fn from_string( s : &str ) -> Result<Self, QanError> {
         Ok(toml::from_str(s).unwrap())

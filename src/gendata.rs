@@ -20,6 +20,11 @@ use crate::error::QanError;
 use glp::glp::{GlpPk, gen_pk};
 use rocksdb::DB;
 
+
+/// Generator function for data for testing purposes.
+/// At the middle of the code the outer for loop is responsible for blocks,
+/// the inner loop is responsible for transactions.
+/// This function only works with the "quantum" feature flag. 
 #[cfg(feature = "quantum")]
 pub fn gen_data() -> Result<(), QanError>{
     let genkeys = crate::pk::PetKey::new();

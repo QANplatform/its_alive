@@ -20,6 +20,8 @@ use crate::util::{do_hash, vec_to_arr};
 use crate::error::QanError;
 use rocksdb::DB;
 
+/// getter/init function for genesis block. The node first tries to load block height 0 (aka genesis block) from the database.
+/// In case this was unsuccesful it tries to load it from file. On yet another failure, the node asks for genesis on the network. 
 pub fn genesis_getter(
     genesis : &str, 
     keys    : &PetKey,
@@ -76,6 +78,11 @@ pub fn genesis_getter(
     Ok(head)
 }
 
+/// Synchronization logic implementation. It runs from current locally available height to network-wise available greatest height.  
+/// The parameters are a nats client reference, an u64 in case you only want to syncronize to a certain depth.
+/// The last parameter is the latest locally available block, or whichever we want to use as a base to start syncing.
+/// Every block is checked and we ask for every transaction through the network. In case a public key is missing we also ask for that.
+/// If we cannot get every transaction or block, or they are corrupted, after 10 errors the code exits.
 pub fn sync(client : &Client, spv : u64, head : &mut Block) -> Result<u64, QanError>{
     #[cfg(feature = "quantum")]
     let mut txdb = DB::open_default("qtx.db").map_err(|e|QanError::Database(e))?;

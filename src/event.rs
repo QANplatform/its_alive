@@ -5,6 +5,7 @@ use crate::{
     block::Block,
 };
 
+///Enum for internal data direfentiation during internal transmissions.
 pub enum Event {
     Transaction(Vec<u8>),
     #[cfg(not(feature = "quantum"))]
@@ -21,6 +22,7 @@ pub enum Event {
     GetTx([u8;32], std::sync::mpsc::SyncSender<Vec<u8>>),
 }
 
+///Enum for cross network sync transmissions.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum SyncType {
     GetHeight,

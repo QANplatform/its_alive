@@ -53,6 +53,7 @@ impl Meta{
     }
 }
 
+/// Starter function for the JSON-RPC. Methods are explained and exampled separately.
 pub fn start_rpc(
     sendr           : std::sync::mpsc::SyncSender<Event>, 
     blocks_db       : Arc<DB>, 

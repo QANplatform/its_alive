@@ -10,27 +10,30 @@ use hex::encode;
 #[cfg(feature = "quantum")]
 use glp::glp::{GlpSig, GlpSk, GlpPk, sign, verify, gen_pk};
 
-//TxBody is the main data of the transactions
+/// TxBody is the main data of the transactions. Consist of the nonce, the timestamp, the recipient address, the balance, and the data itself.
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct TxBody{
 	pub nonce: u64,             //size: 8     byte
-	pub timestamp: u64,         //size: 8     byte
+    pub timestamp: u64,         //size: 8     byte
+    pub balance: u64,
     pub recipient: [u8; 32],    //size: 32    byte
     pub data: Vec<u8>,          //size: x   byte
 }
 
 impl fmt::Display for TxBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"nonce\":{},\n\"timestamp\":{},\n\"recipient\":{},\n\"data\":{:?}",
-        self.nonce, self.timestamp, encode(self.recipient), self.data)
+        write!(f, "\"nonce\":{},\n\"timestamp\":{},\n\"recipient\":{},\n\"balance\":{},\n\"data\":{:?}",
+        self.nonce, self.timestamp, encode(self.recipient), self.balance, self.data)
     }
 }
 
 impl TxBody{
+    ///Constructor function for TxBody. Takes recipient address and data. Also includes a random nince and the timestamp of creation. In this edition the balance is 0.
     pub fn new(recipient: [u8; 32], data: Vec<u8>) -> TxBody {
         TxBody {
             nonce: OsRng.next_u64(),  
             timestamp: crate::util::timestamp(),
+            balance: 0,
             recipient: recipient,
             data: data,
         }
@@ -41,20 +44,17 @@ impl TxBody{
     }
 
     pub fn len(&self) -> usize{
-        48+self.data.len()
+        56+self.data.len()
     }
 }
 
+/// The Transaction struct contains all data that belongs to a transaction. This means the main data, found in TxBody, as well as the senders address and the cryptographic signature.
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct Transaction {
     pub transaction : TxBody,
-    #[cfg(not(feature = "quantum"))]
     pub pubkey      : [u8;32],
-    #[cfg(feature = "quantum")]
-    pub pubkey      : [u8; 32],
     pub sig         : Vec<u8> 
 }
-
 
 impl fmt::Display for Transaction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -63,14 +63,15 @@ impl fmt::Display for Transaction {
     }
 }
 
-
 impl Transaction{
+    /// New function in case `quantum` feature flag is not used. Takes ed25519_dalek Keypair to sign the transaction.
     #[cfg(not(feature = "quantum"))]
     pub fn new( transaction: TxBody, kp: &Keypair ) -> Result<Self, QanError> {
         let sig = kp.sign(&serde_json::to_vec(&transaction).map_err(|e|QanError::Serde(e))?);
         Ok(Transaction { transaction , pubkey: do_hash(&kp.public.to_bytes().to_vec()), sig: sig.to_bytes().to_vec() })
     }
 
+    /// Verification method for transactions. Takes ed25519_dalek public key to use in verifiaction.
     #[cfg(not(feature = "quantum"))]
     pub fn verify(&self, pubkey : &PublicKey) -> Result<bool, QanError>{
         let sig = Signature::from_bytes(&self.sig).unwrap();
@@ -79,13 +80,15 @@ impl Transaction{
             Err(_)=>false
         })
     }
-
+    
+    /// New function in case `quantum` feature flag is used. Takes quantum secret key to sign the transaction.
     #[cfg(feature = "quantum")]
     pub fn new( transaction: TxBody, sk: &GlpSk ) -> Result<Self, QanError> {
         let sig = sign(&sk, serde_json::to_vec(&transaction).map_err(|e|QanError::Serde(e))?).unwrap();
         Ok(Transaction { transaction , pubkey: do_hash(&gen_pk(&sk).to_bytes()), sig: sig.to_bytes() })
     }
 
+    /// Verification method for transactions. Takes quantum public key to use in verifiaction.
     #[cfg(feature = "quantum")]
     pub fn verify(&self, pubkey : &GlpPk) -> Result<bool, QanError>{
         let qsig = GlpSig::from_bytes(&self.sig);
@@ -97,6 +100,6 @@ impl Transaction{
     }
 
     pub fn len(&self) -> usize{
-        self.sig.len()+self.transaction.len()
+        32+self.sig.len()+self.transaction.len()
     }
 }

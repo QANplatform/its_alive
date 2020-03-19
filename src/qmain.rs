@@ -61,8 +61,6 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
 
     client.publish("PubKey", &keys.get_glp_pk_bytes(), None).map_err(|e|QanError::Nats(e))?;
     start_stdin_handler(&sndr);
-    start_sync_sub(&sndr, &client);
-
     let mut txdb = Arc::new(txdb);
     let mut blockdb = Arc::new(blockdb);
     let mut accounts = Arc::new(accounts);

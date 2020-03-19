@@ -9,10 +9,12 @@ use log4rs::encode::pattern::PatternEncoder;
 use log4rs::config::{Appender, Config, Logger, Root};
 use log4rs::Handle;
 
+/// Getter function for unix timestamp in milliseconds
 pub fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).expect("timestamp").as_millis() as u64
 }
 
+/// Reader function to get n bytes from /dev/urandom
 pub fn urandom(n: usize) -> Vec<u8> {
     let mut fd = File::open("/dev/urandom").expect("failed to open urandom");
     let mut ret = vec![0; n];
@@ -21,17 +23,7 @@ pub fn urandom(n: usize) -> Vec<u8> {
     ret.to_vec()
 }
 
-pub fn hex_arr_to_dec_arr(){
-    //79,33,fd,e3,32,43,76,e6,92,52,ce,06,cc,86,5b,23,8e,c5,29,36,0e,7e,59,6a,ee,e0,3f,97,6c,5c,8d,08
-    fn match_i(i: &str)->u8{match i{"0"=>0,"1"=>16,"2"=>32,"3"=>48,"4"=>64,"5"=>80,"6"=>96,"7"=>112,"8"=>128,"9"=>144,"a"=>160,"b"=>176,"c"=>192,"d"=>208,"e"=>224,"f"=>240,_=>0,}}
-    fn match_j(j: &str)->u8{match j{"0"=>0,"1"=>1,"2"=>2,"3"=>3,"4"=>4,"5"=>5,"6"=>6,"7"=>7,"8"=>8,"9"=>9,"a"=>10,"b"=>11,"c"=>12,"d"=>13,"e"=>14,_=>0,}}
-    let hash = [("7","9"),("3","3"),("f","d"),("e","3"),("3","2"),("4","3"),("7","6"),("e","6"),("9","2"),("5","2"),("c","e"),("0","6"),("c","c"),("8","6"),("5","b"),("2","3"),
-                ("8","e"),("c","5"),("2","9"),("3","6"),("0","e"),("7","e"),("5","9"),("6","a"),("e","e"),("e","0"),("3","f"),("9","7"),("6","c"),("5","c"),("8","d"),("0","8")];
-    let mut ret : Vec<u8> = Vec::new();
-    for (i,j) in hash.iter(){ret.push(match_i(i)+match_j(j));}
-    println!("{:?}", ret);
-}
-
+/// Convinience function to handle the feature flags at hashing
 pub fn do_hash(input: &Vec<u8>) -> [u8;32]{
     #[cfg(feature = "quantum")]
     let ret = swift_hash(input);
@@ -40,6 +32,9 @@ pub fn do_hash(input: &Vec<u8>) -> [u8;32]{
     ret
 }
 
+/// Function to handle to quantum secure hashing
+/// # Safety 
+/// this function calls out into C a codebase
 pub fn swift_hash(input: &Vec<u8>) -> [u8;32]{
     let mut ret = [0u8;32];
     unsafe{
@@ -48,6 +43,7 @@ pub fn swift_hash(input: &Vec<u8>) -> [u8;32]{
     ret
 }
 
+/// Usage function for blake2b hashing
 pub fn blake2b(b: &Vec<u8>) ->  [u8;32] {
     let mut hasher = Blake2b::new();
     hasher.input(b);
@@ -59,12 +55,14 @@ pub fn blake2b(b: &Vec<u8>) ->  [u8;32] {
     ret
 }
 
+/// Convinience function
 pub fn vec_to_arr(v : &Vec<u8>)->[u8;32]{
     let mut a : [u8;32] =[0;32];
     a.clone_from_slice(&v[0..32]);
     a
 }
 
+/// Init function for logging. Parameter decides the level of logging. The log file is placed at `/tmp/qan/` named `<unix timestamp of starting>.log` 
 pub fn init_logging(level_conf : &str) -> log4rs::Handle{
     let level = match level_conf.as_ref(){
         "error" =>LevelFilter::Error,
@@ -72,7 +70,7 @@ pub fn init_logging(level_conf : &str) -> log4rs::Handle{
         "info"  =>LevelFilter::Info,
         "debug" =>LevelFilter::Debug,
         "trace" =>LevelFilter::Trace,
-        _       =>  LevelFilter::Error,
+        _       =>LevelFilter::Error,
     };
 
     let logname = "/tmp/qan/".to_owned()+&timestamp().to_string()+".log";

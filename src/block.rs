@@ -9,6 +9,7 @@ use glp::glp::{GlpSig, GlpSk, GlpPk, sign, verify, gen_pk};
 use hex::encode;
 use std::fmt;
 
+/// Function used when making merkle-tree.
 pub fn merge(l:&[u8;32],r:&[u8;32])->[u8;32]{
     let mut buf = Vec::new();
     buf.extend_from_slice(l);
@@ -16,6 +17,7 @@ pub fn merge(l:&[u8;32],r:&[u8;32])->[u8;32]{
     do_hash(&buf) 
 }
 
+/// Main data of blocks. Contains unix timestamp of creation, merkle root of transaction hashes, the transaction hasher, hash of the previous block.
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct BlockData {
     pub timestamp   : u64,
@@ -36,6 +38,7 @@ impl fmt::Display for BlockData {
 }
 
 impl BlockData {
+    /// Constructor function for BlockData. Takes a vector of the transaction hashes, and the hash of the previous block.
     pub fn new(prev_hash : [u8;32], txes : Vec<[u8;32]>) -> Result<Self, QanError> {
         let tree = static_merkle_tree::Tree::from_hashes(txes.to_vec(),merge);
         let merkle_root : Vec<u8> = tree.get_root_hash().unwrap().to_vec();
@@ -47,12 +50,14 @@ impl BlockData {
         })
     }
 
+    /// getter for block timestamp
     pub fn timestamp(&self) -> u64{
         self.timestamp
     }
 
 }
 
+/// The signature is made on the blockdata and its hash, hence the bundling.
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct HashedBlock {
     pub blockdata   : BlockData,
@@ -76,6 +81,7 @@ impl HashedBlock {
         })
     }
 
+    /// getter for block timestamp
     pub fn timestamp(&self) -> u64 {
         self.blockdata.timestamp()
     }
@@ -125,11 +131,13 @@ impl Block{
         })
     }
 
+    /// block verification function
     #[cfg(feature = "quantum")]
     pub fn verify(&self, pk : &GlpPk) -> Result<bool, QanError> {
         Ok(verify(&pk, &GlpSig::from_bytes(&self.sig), &serde_json::to_vec(&self.hashedblock).map_err(|e|QanError::Serde(e))?))
     }
 
+    /// block verification function
     #[cfg(not(feature = "quantum"))]
     pub fn verify(&self, pk : &PublicKey) -> Result<bool, QanError>{
         let sig = Signature::from_bytes(&self.sig).unwrap();
@@ -139,22 +147,30 @@ impl Block{
         })
     }
 
+    /// Block validation function. Checks if this block 
+    ///  was made after the parameter,
+    ///  hat a height higher than the parameter,
+    ///  is built on the same block determined in the parameter  
     pub fn validate(&self, timestamp: u64, height: u64, prev_hash: [u8;32]) -> (bool, bool, bool){
         ( timestamp < self.timestamp(), height < self.height, prev_hash == self.hashedblock.blockdata.prev_hash )
     }
 
+    /// getter for block hash
     pub fn hash(&self)->[u8;32]{
         self.hashedblock.hash
     }
 
+    /// getter for block merkle root
     pub fn merkle(&self)->Vec<u8>{
         self.hashedblock.blockdata.merkle_root.clone()
     }
 
+    /// getter for previous block hash
     pub fn prev_hash(&self) -> [u8;32]{
         self.hashedblock.blockdata.prev_hash
     }
 
+    /// getter for block timestamp
     pub fn timestamp(&self)->u64{
         self.hashedblock.timestamp()
     }
