@@ -1,4 +1,4 @@
-use crate::user_client::{start_client, start_sync_sub, start_stdin_handler};
+use crate::user_client::{start_client, start_stdin_handler};
 use crate::transaction::{Transaction, TxBody};
 use natsclient::{self, ClientOptions, Client};
 use std::{
