@@ -35,6 +35,7 @@ pub fn do_hash(input: &Vec<u8>) -> [u8;32]{
 /// Function to handle to quantum secure hashing
 /// # Safety 
 /// this function calls out into C a codebase
+#[cfg(feature = "quantum")]
 pub fn swift_hash(input: &Vec<u8>) -> [u8;32]{
     let mut ret = [0u8;32];
     unsafe{

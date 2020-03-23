@@ -26,6 +26,7 @@ pub mod config;
 pub mod block;
 pub mod error;
 pub mod event;
+#[cfg(feature = "quantum")]
 pub mod hash;
 pub mod util;
 pub mod sync;

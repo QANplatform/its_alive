@@ -53,7 +53,7 @@ fn bindgen_test_layout_SWIFFTX_CTX ( ) {
 } 
 extern "C" { pub fn SWIFFTX_Init( state : *mut SWIFFTX_CTX, hash_bitlen : ::std::os::raw::c_int) -> ::std::os::raw::c_int;} 
 extern "C" { pub fn SWIFFTX_Update( state : *mut SWIFFTX_CTX, m : * const ::std::os::raw::c_uchar, n : usize ) -> ::std::os::raw::c_int;} 
-extern "C" { pub fn SWIFFTX_Final( state : *mut SWIFFTX_CTX, md : * mut   ::std::os::raw::c_uchar) -> ::std::os::raw::c_int;} 
+extern "C" { pub fn SWIFFTX_Final( state : *mut SWIFFTX_CTX, md : * mut   ::std::os::raw::c_uchar) -> ::std::os::raw::c_int;}   
 #[link(name="hash", kind="static")]
 extern "C" { pub fn SWIFFTX ( hash_bitlen : ::std::os::raw::c_int, m : *const ::std::os::raw::c_uchar, n : usize, md : *mut ::std::os::raw::c_uchar) ->::std::os::raw::c_int;} 
 extern "C" { pub fn SWIFFTX_set_salt ( state : * mut SWIFFTX_CTX , salt : * mut ::std::os::raw::c_uchar, n : ::std::os::raw::c_ushort) -> ::std::os::raw::c_int;} 
