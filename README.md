@@ -56,14 +56,12 @@ the actual working glue examples.
 The first running must be the NATS server as the node uses it. 
 In case the NATS server is not running the demo itself will panic and exit.
 A working NATS server binary is present at (from the repos root folder).
-The steps of running in order are:
-1. `./nats-server-v2.1.2-linux-386/nats-server`
-2. a) `cargo run`
-2. b) `cargo run --release` if compiled with "--release" flag
-(`cargo run` itself will compile the code if modifications are present since
-the last compiled version, or no compiled version is present.)
-2. c) `./target/debug/poa_demo`
-2. d) `./target/release/poa_demo`
+- `./nats-server-v2.1.2-linux-386/nats-server`
+- `cargo run` or `cargo run --release`
+
+Alternatively:
+- `cargo build`
+- `target/debug/poa_demo`
 
 You can also use `-u` and `-p` to set http basic auth for the rpc.
 A `-n` argument is also present to define NATS server location.
@@ -84,14 +82,10 @@ The other is using docker.
 The repo itself contains the `Dockerfile` needed, as well as a `compose.sh`.
 
 Using the docker path has the following steps in order:
-1. getting docker
-2. `systemctl start docker`
-3. `docker network create subs` 
+- `systemctl start docker`
+- `docker network create subs` 
 (the `subs` docker network is used in our `compose.sh`)
-4. in the repo root folder running:
-`docker build . -t poademo`
-5. running the NATS server locally, outside of docker (all nodes from
-docker will connect to it)
-6. a) using the `compose.sh` with an integer parameter to define instance count
-or using the following to create a single instance manually
-6. b) `docker run -i --net=subs --name="node" -h "node" -d --ip="172.33.0.2" poademo`
+- `docker build . -t poademo`
+- start NATS server on the **host machine**: `./nats-server-v2.1.2-linux-386/nats-server`
+- `./compose.sh <number of nodes>` or
+- `docker run -i --net=subs --name="node" -h "node" -d --ip="172.33.0.2" poademo`
