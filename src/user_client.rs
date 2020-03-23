@@ -52,7 +52,7 @@ pub fn start_stdin_handler(tsndr : &std::sync::mpsc::SyncSender<Event>){
         loop{
             let mut buffer = String::new();
             handle.read_line(&mut buffer);
-            // tsndr.send(Event::Chat(buffer.as_bytes().to_vec()));
+            tsndr.send(Event::Chat(buffer.as_bytes().to_vec()));
         }
     });
 }

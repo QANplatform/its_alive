@@ -61,7 +61,7 @@ impl Config{
                 .short("k")
                 .long("password"),
             Arg::with_name("rpc-port")
-                .help("http authentication username")
+                .help("rpc port")
                 .takes_value(true)
                 .short("p")
                 .long("port"),

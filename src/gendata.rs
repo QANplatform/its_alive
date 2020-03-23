@@ -50,7 +50,7 @@ pub fn gen_data() -> Result<(), QanError>{
         pkeys.flush().map_err(|e|QanError::Database(e))?;
         let mut tx_es = Vec::new();
         for j in 0..12{
-            let tx = Transaction::new(TxBody::new([0;32], 0, None), &keys.glp)?;
+            let tx = Transaction::new(TxBody::new([0;32], 0, crate::util::urandom(968)), &keys.glp)?;
             txdb.put(tx.hash()?, serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?).map_err(|e|QanError::Database(e))?;
             tx_es.push(tx.hash()?);
         }

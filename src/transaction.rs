@@ -33,7 +33,7 @@ pub struct TxBody{
     pub timestamp: u64,         //size: 8     byte
     pub recipient: [u8; 32],    //size: 32    byte
     pub balance  : u64,         //size: 8     byte
-    pub data: Option<VmCall>,
+    pub data: Vec<u8>
 }
 
 impl fmt::Display for TxBody {
@@ -45,7 +45,7 @@ impl fmt::Display for TxBody {
 
 impl TxBody{
     ///Constructor function for TxBody. Takes recipient address and data. Also includes a random nince and the timestamp of creation. In this edition the balance is 0.
-    pub fn new(recipient: [u8; 32], balance: u64 ,data: Option<VmCall>) -> TxBody {
+    pub fn new(recipient: [u8; 32], balance: u64 ,data: Vec<u8>) -> TxBody {
         TxBody {
             recipient: recipient,
             nonce: OsRng.next_u64(),  
@@ -60,7 +60,7 @@ impl TxBody{
     }
 
     pub fn len(&self) -> usize{
-        56+0
+        56+self.data.len()
     }
 }
 
@@ -111,7 +111,7 @@ impl Transaction{
         Ok(verify(&pubkey,&qsig,&serde_json::to_vec(&self.transaction).map_err(|e|QanError::Serde(e))?))
     }
 
-    pub fn get_sc_call(&self) -> Option<VmCall>{
+    pub fn get_data(&self) -> Vec<u8>{
         self.transaction.data.clone()
     }
 

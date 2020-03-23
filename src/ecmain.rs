@@ -199,6 +199,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     pool_size += tx.len();
                     let txh = tx.hash()?;
                     let recipient = tx.transaction.recipient;
+                    debug!("{:?}", if recipient == [0u8;32]{String::from_utf8_lossy(tx.get_data())}else{tx.get_data()});
                     match mempool.insert(txh, tx){
                         Some(_)=>{continue'main},
                         None=>{
@@ -256,7 +257,10 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
             //     let tx = Transaction::new(TxBody::new(to, 0, data), &kp)?;
             //     client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
             // },
-
+            Event::Chat(msg)=>{
+                let tx = Transaction::new(TxBody::new([0u8;32], 0, msg), &keys.ec)?;
+                client.publish("tx.broadcast", &serde_json::to_vec(&tx).map_err(|e|QanError::Serde(e))?, None).map_err(|e|QanError::Nats(e))?;
+            },
             Event::GetHeight(sendr)=>{
                 sendr.send(block_height).expect("couldn't send height to rpc");
             },

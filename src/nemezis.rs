@@ -6,7 +6,7 @@ use crate::error::QanError;
 pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block::Block, crate::transaction::Transaction), QanError>{
     // let ConsensusSettings = crate::conset::ConsensusSettings::default();
     // let nemezis_body = crate::transaction::TxBody::new([0;32], serde_json::to_vec(&ConsensusSettings).map_err(|e|QanError::Serde(e))?);
-    let nemezis_body = crate::transaction::TxBody::new([0;32], 0, None); 
+    let nemezis_body = crate::transaction::TxBody::new([0;32], 0, "woopwoop".as_bytes().to_vec()); 
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &keys.ec)?;
     let mut nemezis_vec : Vec<[u8;32]> = Vec::new();
     nemezis_vec.push(nemesis_tx.hash()?);
@@ -21,7 +21,7 @@ pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block:
 pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block::Block, crate::transaction::Transaction), QanError>{
 //     let ConsensusSettings = crate::conset::ConsensusSettings::default();
     // let nemezis_body = crate::transaction::TxBody::new([0;32], serde_json::to_vec(&ConsensusSettings).map_err(|e|QanError::Serde(e))?);
-    let nemezis_body = crate::transaction::TxBody::new([0;32], 0, None);  
+    let nemezis_body = crate::transaction::TxBody::new([0;32], 0,  "woopwoop".as_bytes().to_vec());  
     let nemesis_tx = crate::transaction::Transaction::new(nemezis_body, &keys.glp)?;
     let mut nemezis_vec = Vec::new();
     nemezis_vec.push(nemesis_tx.hash()?);

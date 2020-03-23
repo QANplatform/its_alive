@@ -15,6 +15,7 @@ pub enum Event {
     // PublishTx([u8;32], Option<VmCall>,ed25519_dalek::Keypair),
     // #[cfg(feature = "quantum")]
     // PublishTx([u8;32], Option<VmCall>,glp::glp::GlpSk),
+    Chat(Vec<u8>),
     RawTransaction(Vec<u8>),
     Block(Vec<u8>),
     PubKey(Vec<u8>, Option<String>),
