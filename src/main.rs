@@ -5,6 +5,7 @@ extern crate rmp_serde as rmps;
 extern crate serde_derive;
 extern crate rocksdb;
 extern crate base64;
+extern crate log4rs;
 extern crate wasmi;
 extern crate clap;
 extern crate toml;
@@ -23,7 +24,10 @@ pub mod gendata;
 pub mod conset;
 pub mod config;
 pub mod block;
+pub mod error;
 pub mod event;
+#[cfg(feature = "quantum")]
+pub mod hash;
 pub mod util;
 pub mod sync;
 pub mod rpc;

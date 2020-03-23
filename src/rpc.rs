@@ -3,6 +3,7 @@ use serde_derive::Deserialize;
 
 use crate::block::Block;
 use crate::event::Event;
+use crate::error::QanError;
 
 use jsonrpc_http_server::jsonrpc_core::{self, MetaIoHandler, Metadata, Value, Params};
 use jsonrpc_http_server::{ServerBuilder, cors::AccessControlAllowHeaders, hyper, RestApi,};
@@ -25,12 +26,13 @@ struct RawTransaction {
     tx: Vec<u8>
 	// tx: crate::transaction::Transaction,
 }
-#[derive(Deserialize)]
-struct PublishTransaction {
-	to:     [u8;32],
-    data:   Vec<u8>,
-    secret: String,
-}
+
+// #[derive(Deserialize)]
+// struct PublishTransaction {
+// 	to:     [u8;32],
+//     data:   Option<crate::transaction::VmCall>,
+//     secret: String,
+// }
 
 #[derive(Default, Clone)]
 struct Meta {
@@ -52,6 +54,7 @@ impl Meta{
     }
 }
 
+/// Starter function for the JSON-RPC. Methods are explained and exampled separately.
 pub fn start_rpc(
     sendr           : std::sync::mpsc::SyncSender<Event>, 
     blocks_db       : Arc<DB>, 
@@ -63,24 +66,20 @@ pub fn start_rpc(
     std::thread::spawn(move||{ 
         let mut io = MetaIoHandler::default();
         let txpub_sender = sendr.clone();
-        io.add_method_with_meta("publish_transaction", move |params: Params, meta: Meta| {
-            if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
-            let parsed : PublishTransaction = params.parse().expect("66: cant parse publishtransaction");
-            let secret = match parsed.secret.get(0..2).expect("get"){
-                #[cfg(not(feature = "quantum"))]
-                "0x" => ed25519_dalek::Keypair::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).unwrap()).unwrap(),
-                #[cfg(feature = "quantum")]
-                "0x" => glp::glp::GlpSk::from_bytes(&hex::decode(parsed.secret.split_at(2).1.to_owned()).expect("decode")),
-                #[cfg(not(feature = "quantum"))]
-                _ => crate::pk::PetKey::from_pem(&parsed.secret).ec,
-                #[cfg(feature = "quantum")]
-                _ => crate::pk::PetKey::from_pem(&parsed.secret).glp,
-            };
-            match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data, secret)){
-                Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
-                Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
-            }
-        });
+        // io.add_method_with_meta("publish_transaction", move |params: Params, meta: Meta| {
+        //     if !meta.check(){return Err(jsonrpc_core::Error::new(jsonrpc_core::ErrorCode::ServerError(403)))}
+        //     let parsed : PublishTransaction = params.parse().expect("66: cant parse publishtransaction");
+        //     let secret = match parsed.secret.get(0..2).expect("get"){
+        //         #[cfg(not(feature = "quantum"))]
+        //         _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().ec,
+        //         #[cfg(feature = "quantum")]
+        //         _ => crate::pk::PetKey::from_pem(&parsed.secret).unwrap().glp,
+        //     };
+        //     match txpub_sender.clone().send(Event::PublishTx(parsed.to,parsed.data, secret)){
+        //         Err(_e) => return Err(jsonrpc_core::Error::internal_error()),
+        //         Ok(_) => return Ok(Value::String("transaction_sent".to_string())),
+        //     }
+        // });
 
         let rawtxpub_sender= sendr.clone();
         io.add_method_with_meta("publish_raw_transaction", move |params: Params, meta: Meta| {
@@ -103,7 +102,7 @@ pub fn start_rpc(
             };
             match byh_blocks_db.get(&bh) {
                 Ok(Some(value)) => {
-                    let value : Block = serde_json::from_slice(&value).expect("94: cant deserialize block");
+                    let value : Block = serde_json::from_slice(&value).unwrap();
                     // println!("{}",value);
                     return Ok(json![value])
                 },
@@ -137,7 +136,7 @@ pub fn start_rpc(
             let parsed: HashGetter = params.parse().expect("137: cant parse hashgetter");
             match blocks_db.get(&parsed.hash) {
                 Ok(Some(value)) => {
-                    let value : Block = serde_json::from_slice(&value).expect("140: cant deserialize block");
+                    let value : Block = serde_json::from_slice(&value).unwrap();
                     return Ok(json![value])
                 },
                 Ok(None) => return Err(jsonrpc_core::Error::internal_error()),

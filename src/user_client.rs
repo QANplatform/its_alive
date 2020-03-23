@@ -6,48 +6,44 @@ use natsclient::{Client, ClientOptions};
 use crate::{
     event::Event,
     block::Block,
+    error::QanError,
     transaction::Transaction
 };
 
-pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Event>) -> Client{
-    let mut client = Client::from_options(opts).expect("13:client from options builder");
-    client.connect().expect("41:client  connect");
+/// Setup function for main NATS pubsub topics
+pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Event>) -> Result<Client,QanError>{
+    let mut client = Client::from_options(opts).map_err(|e|QanError::Nats(e))?;
+    client.connect().map_err(|e|QanError::Nats(e))?;
 
     let bsndr = sndr.clone();
     client.subscribe("block.propose", move |msg| {
         bsndr.send(Event::Block(msg.payload.to_owned()));
         Ok(())
-    }).expect("block.propose");
+    }).map_err(|e|QanError::Nats(e))?;
 
     let txsndr = sndr.clone();
     client.subscribe("tx.broadcast", move |msg| {
         txsndr.send(Event::Transaction(msg.payload.to_owned()));
         Ok(())
-    }).expect("tx.broadcast");
-
-    let chsndr = sndr.clone();
-    client.subscribe("chat", move |msg| {
-        chsndr.send(Event::Chat(msg.payload.to_owned()));
-        Ok(())
-    }).expect("chat");
+    }).map_err(|e|QanError::Nats(e))?;
 
     let pksndr = sndr.clone();
     client.subscribe("PubKey", move |msg| {
         pksndr.send(Event::PubKey(msg.payload.to_owned(), msg.reply_to.clone()));
         Ok(())
-    }).expect("PubKey");
-    client
-}
+    }).map_err(|e|QanError::Nats(e))?;
 
-pub fn start_sync_sub(sndr : &std::sync::mpsc::SyncSender<Event>, client : &Client){
     let syncsndr = sndr.clone();
     client.subscribe("Synchronize", move |msg| {
         let rep = msg.reply_to.clone().unwrap();
         syncsndr.send(Event::Synchronize(msg.payload.to_owned(), rep));
         Ok(())
-    }).expect("Synchronize");
+    }).map_err(|e|QanError::Nats(e))?;
+    
+    Ok(client)
 }
 
+/// Retired starter function for terminal chat
 pub fn start_stdin_handler(tsndr : &std::sync::mpsc::SyncSender<Event>){ 
     let tsndr = tsndr.clone();
     thread::spawn( move ||{
@@ -56,7 +52,7 @@ pub fn start_stdin_handler(tsndr : &std::sync::mpsc::SyncSender<Event>){
         loop{
             let mut buffer = String::new();
             handle.read_line(&mut buffer);
-            tsndr.send(Event::Chat(buffer.as_bytes().to_vec()));
+            // tsndr.send(Event::Chat(buffer.as_bytes().to_vec()));
         }
     });
 }
