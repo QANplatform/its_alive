@@ -1,3 +1,5 @@
+/**This module is an automatically generated binding, hence it is not documented. */
+
 pub const SWIFFTX_INPUT_BLOCK_SIZE : u32 = 256 ;
 pub const SWIFFTX_OUTPUT_BLOCK_SIZE : u32 = 65 ;
 pub const HAIFA_SALT_SIZE : u32 = 8 ;

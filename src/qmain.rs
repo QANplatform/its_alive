@@ -1,4 +1,4 @@
-use crate::user_client::{start_client, start_sync_sub, start_stdin_handler};
+use crate::user_client::{start_client, start_stdin_handler};
 use crate::transaction::{Transaction, TxBody};
 use natsclient::{self, ClientOptions};
 use std::{
@@ -60,9 +60,7 @@ pub fn qmain() -> Result<(), Box<dyn std::error::Error>> {
     let mut pool_size : usize = 0;
 
     client.publish("PubKey", &keys.get_glp_pk_bytes(), None).map_err(|e|QanError::Nats(e))?;
-    // start_stdin_handler(&sndr);
-    start_sync_sub(&sndr, &client);
-
+    start_stdin_handler(&sndr);
     let mut txdb = Arc::new(txdb);
     let mut blockdb = Arc::new(blockdb);
     let mut accounts = Arc::new(accounts);

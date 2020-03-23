@@ -1,6 +1,7 @@
 use std::io::Write;
 use crate::error::QanError;
 
+/// Generator function for genesis block. Default genesis transaction is the default settings for making consensus in this preconsensus version.
 #[cfg(not(feature = "quantum"))]
 pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block::Block, crate::transaction::Transaction), QanError>{
     // let ConsensusSettings = crate::conset::ConsensusSettings::default();
@@ -15,6 +16,7 @@ pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block:
     Ok((block, nemesis_tx))
 }
 
+/// Generator function for genesis block. Default genesis transaction is the default settings for making consensus in this preconsensus version.
 #[cfg(feature = "quantum")]
 pub fn generate_nemezis_block(keys: &crate::pk::PetKey) -> Result<(crate::block::Block, crate::transaction::Transaction), QanError>{
 //     let ConsensusSettings = crate::conset::ConsensusSettings::default();

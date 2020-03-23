@@ -10,6 +10,7 @@ use crate::{
     transaction::Transaction
 };
 
+/// Setup function for main NATS pubsub topics
 pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Event>) -> Result<Client,QanError>{
     let mut client = Client::from_options(opts).map_err(|e|QanError::Nats(e))?;
     client.connect().map_err(|e|QanError::Nats(e))?;
@@ -31,19 +32,18 @@ pub fn start_client(opts: ClientOptions, sndr : &std::sync::mpsc::SyncSender<Eve
         pksndr.send(Event::PubKey(msg.payload.to_owned(), msg.reply_to.clone()));
         Ok(())
     }).map_err(|e|QanError::Nats(e))?;
-    Ok(client)
-}
 
-pub fn start_sync_sub(sndr : &std::sync::mpsc::SyncSender<Event>, client : &Client) -> Result<(), QanError>{
     let syncsndr = sndr.clone();
     client.subscribe("Synchronize", move |msg| {
         let rep = msg.reply_to.clone().unwrap();
         syncsndr.send(Event::Synchronize(msg.payload.to_owned(), rep));
         Ok(())
     }).map_err(|e|QanError::Nats(e))?;
-    Ok(())
+    
+    Ok(client)
 }
 
+/// Retired starter function for terminal chat
 pub fn start_stdin_handler(tsndr : &std::sync::mpsc::SyncSender<Event>){ 
     let tsndr = tsndr.clone();
     thread::spawn( move ||{

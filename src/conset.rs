@@ -1,3 +1,6 @@
+/// Demo version consensus setting.
+/// Block is generated if minimum transaction count, 
+/// and minimum pool size is achieved after a minimum time passed since the last block.
 #[derive(Debug, PartialEq, Deserialize, Serialize, Eq, Hash, Clone)]
 pub struct ConsensusSettings {
     min_tx      :   usize,
@@ -19,9 +22,9 @@ impl ConsensusSettings {
     }
 
     pub fn check_limiters(&self, tx_count : usize, pool_size : usize , prev_time : u64 )-> bool {
-        if  (self.min_tx<=tx_count) && 
-            (self.min_size<pool_size) && 
-            (self.min_time<crate::util::timestamp()-prev_time) 
+        if  (self.min_tx  <= tx_count) && 
+            (self.min_size < pool_size) && 
+            (self.min_time < crate::util::timestamp()-prev_time) 
         { 
             println!("{:?}", self);
             return true 
