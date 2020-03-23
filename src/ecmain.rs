@@ -199,7 +199,7 @@ pub fn ecmain() -> Result<(), Box<dyn std::error::Error>> {
                     pool_size += tx.len();
                     let txh = tx.hash()?;
                     let recipient = tx.transaction.recipient;
-                    debug!("{:?}", if recipient == [0u8;32]{String::from_utf8_lossy(tx.get_data())}else{tx.get_data()});
+                    if recipient == [0u8;32] {debug!("{:?}", String::from_utf8_lossy(&tx.get_data()))};
                     match mempool.insert(txh, tx){
                         Some(_)=>{continue'main},
                         None=>{
